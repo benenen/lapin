@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240" width="560" height="240" role="img" aria-label="Lapin logo — geometric rabbit mark">
+  <title>Lapin — geometric rabbit</title>
+  <style>
+    .ears { transform-origin: 95px 120px; }
+    svg:hover .ears { transform: rotate(-6deg); transition: transform .5s cubic-bezier(.34,1.56,.64,1); }
+  </style>
+
+  <defs>
+    <style>
+      .ink  { fill: #1E2B3C; }
+      .cream{ fill: #FAF5EB; }
+      .carrot { fill: #FF8A3D; }
+      .blush { fill: #FF8A3D; opacity: .38; }
+      .word { font-family: "Cormorant Garamond","Playfair Display",Georgia,"Times New Roman",serif; font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect class="ink" x="20" y="45" width="150" height="150" rx="30"/>
+  <g class="ears">
+    <rect class="cream" x="78" y="62" width="16" height="48" rx="8" transform="rotate(-8 86 120)"/>
+    <rect class="cream" x="96" y="62" width="16" height="48" rx="8" transform="rotate(8 104 120)"/>
+    <circle class="cream" cx="95" cy="128" r="31"/>
+    <circle class="ink" cx="82" cy="121" r="3.6"/>
+    <circle class="ink" cx="108" cy="121" r="3.6"/>
+    <path class="carrot" d="M91 133 L99 133 L95 139 Z"/>
+    <circle class="blush" cx="71" cy="132" r="5"/>
+    <circle class="blush" cx="119" cy="132" r="5"/>
+  </g>
+  <text class="word ink" x="200" y="142" font-size="96" letter-spacing="1">Lapin</text>
+</svg>
