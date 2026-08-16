@@ -32,7 +32,10 @@ go.work.sum
 /web/node_modules/
 /web/coverage/
 /web/dist/
+/web/public/excalidraw-assets/
 
 # Editor/IDE
 # .idea/
 # .vscode/
+
+.playwright-cli
