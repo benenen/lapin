@@ -31,6 +31,7 @@ go.work.sum
 /bin/
 /web/node_modules/
 /web/coverage/
+/web/dist/
 
 # Editor/IDE
 # .idea/
