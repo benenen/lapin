@@ -13,6 +13,7 @@ database_url=${DATABASE_URL-}
 hashid_salt=${HASHID_SALT-}
 secure_cookies=${SECURE_COOKIES-}
 trusted_proxy_cidrs=${TRUSTED_PROXY_CIDRS-}
+asset_dir=${ASSET_DIR:-data/assets}
 using_default_admin=false
 make_metadata="${MAKEFLAGS-} ${MAKEOVERRIDES-} ${MFLAGS-} ${GNUMAKEFLAGS-}"
 
@@ -69,7 +70,7 @@ if [[ "$using_default_admin" == true ]]; then
 fi
 
 # Prevent backend-only configuration from reaching npm, installers, or build processes.
-unset ADMIN_EMAIL ADMIN_PASSWORD HTTP_ADDR DATABASE_URL HASHID_SALT APP_ENV SECURE_COOKIES TRUSTED_PROXY_CIDRS
+unset ADMIN_EMAIL ADMIN_PASSWORD HTTP_ADDR DATABASE_URL HASHID_SALT APP_ENV SECURE_COOKIES TRUSTED_PROXY_CIDRS ASSET_DIR
 
 make web-build air watch-admin-bootstrap
 
@@ -83,6 +84,7 @@ HASHID_SALT="$hashid_salt" \
 APP_ENV="$app_environment" \
 SECURE_COOKIES="$secure_cookies" \
 TRUSTED_PROXY_CIDRS="$trusted_proxy_cidrs" \
+ASSET_DIR="$asset_dir" \
 HTTP_ADDR="$http_address" \
 ADMIN_EMAIL="$admin_email" \
 ADMIN_PASSWORD="$admin_password" \
@@ -107,6 +109,7 @@ HASHID_SALT="$hashid_salt" \
 APP_ENV="$app_environment" \
 SECURE_COOKIES="$secure_cookies" \
 TRUSTED_PROXY_CIDRS="$trusted_proxy_cidrs" \
+ASSET_DIR="$asset_dir" \
 HTTP_ADDR="$http_address" \
   "$air_bin" -c .air.toml &
 air_pid=$!

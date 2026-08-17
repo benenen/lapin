@@ -19,6 +19,7 @@ type Config struct {
 	TrustedProxyCIDRs []*net.IPNet
 	AdminEmail        string
 	AdminPassword     string
+	AssetDir          string
 }
 
 func Load() (Config, error) {
@@ -29,6 +30,7 @@ func Load() (Config, error) {
 		HashIDSalt:    envOr("HASHID_SALT", "lapin-development-salt"),
 		AdminEmail:    strings.ToLower(strings.TrimSpace(os.Getenv("ADMIN_EMAIL"))),
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+		AssetDir:      envOr("ASSET_DIR", "data/assets"),
 	}
 	if config.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

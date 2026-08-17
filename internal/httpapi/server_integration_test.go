@@ -14,6 +14,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/protocol"
 
+	"github.com/benenen/lapin/internal/assetstore"
 	"github.com/benenen/lapin/internal/database"
 	"github.com/benenen/lapin/internal/httpapi"
 	"github.com/benenen/lapin/internal/identifier"
@@ -661,6 +662,12 @@ func TestEmbeddedWebAndSPAFallback(t *testing.T) {
 
 func newTestApp(t *testing.T) *httpapi.App {
 	t.Helper()
+	app, _ := newTestAppWithAssetDir(t)
+	return app
+}
+
+func newTestAppWithAssetDir(t *testing.T) (*httpapi.App, string) {
+	t.Helper()
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -680,7 +687,13 @@ func newTestApp(t *testing.T) *httpapi.App {
 	if err := database.Migrate(ctx, pool); err != nil {
 		t.Fatalf("second migration run must be idempotent: %v", err)
 	}
-	return httpapi.New(pool, httpapi.Options{})
+	assetDir := t.TempDir()
+	assets, err := assetstore.New(assetDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = assets.Close() })
+	return httpapi.New(pool, httpapi.Options{AssetStore: assets}), assetDir
 }
 
 func testIDCodec(t *testing.T) *identifier.Codec {

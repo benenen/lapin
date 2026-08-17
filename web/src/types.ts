@@ -110,3 +110,13 @@ export interface AccessToken {
   expires_at: string
   created_at: string
 }
+
+export interface Asset {
+  id: string
+  url: string
+  sha256: string
+  mime_type: 'image/png' | 'image/jpeg'
+  size: number
+  width: number
+  height: number
+}

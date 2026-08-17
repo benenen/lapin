@@ -46,7 +46,7 @@ func TestLoadManifestRejectsInvalidDocumentsAndPaths(t *testing.T) {
 	}{
 		{name: "unknown field", manifest: `{"version":1,"external_id":"x","title":"X","extra":true}`, wantError: "unknown field"},
 		{name: "trailing JSON", manifest: `{"version":1,"external_id":"x","title":"X"}{}`, wantError: "trailing"},
-		{name: "wrong version", manifest: `{"version":2,"external_id":"x","title":"X"}`, wantError: "version must be 1"},
+		{name: "wrong version", manifest: `{"version":3,"external_id":"x","title":"X"}`, wantError: "version must be 1 or 2"},
 		{name: "duplicate external id", manifest: `{"version":1,"external_id":"x","title":"X","chapters":[{"external_id":"same","title":"A"},{"external_id":"same","title":"B"}]}`, wantError: "duplicate chapter"},
 		{name: "parent traversal", manifest: `{"version":1,"external_id":"x","title":"X","chapters":[{"external_id":"a","title":"A","content_file":"../outside.md"}]}`, wantError: "stay inside"},
 		{name: "absolute path", manifest: `{"version":1,"external_id":"x","title":"X","chapters":[{"external_id":"a","title":"A","content_file":"/etc/passwd"}]}`, wantError: "must be relative"},

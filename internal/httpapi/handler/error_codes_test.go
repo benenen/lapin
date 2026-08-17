@@ -7,6 +7,8 @@ func TestAPIErrorCodesRemainStableAndUnique(t *testing.T) {
 		errorCodeDatabaseUnavailable: "database_unavailable",
 		errorCodeEmailExists:         "email_exists",
 		errorCodeInternal:            "internal_error",
+		errorCodeImportConflict:      "import_conflict",
+		errorCodeImportIncomplete:    "import_incomplete",
 		errorCodeInvalidAccessToken:  "invalid_access_token",
 		errorCodeInvalidCredentials:  "invalid_credentials",
 		errorCodeInvalidCSRF:         "invalid_csrf",
@@ -23,8 +25,8 @@ func TestAPIErrorCodesRemainStableAndUnique(t *testing.T) {
 		errorCodeUnsupportedMedia:    "unsupported_media_type",
 	}
 
-	if len(codes) != 17 {
-		t.Fatalf("error code count = %d, want 17", len(codes))
+	if len(codes) != 19 {
+		t.Fatalf("error code count = %d, want 19", len(codes))
 	}
 	for code, want := range codes {
 		if string(code) != want {

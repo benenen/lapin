@@ -1,4 +1,4 @@
-.PHONY: dev watch air watch-admin-bootstrap build build-cli test test-go test-web test-watch web-install web-build clean
+.PHONY: dev watch air watch-admin-bootstrap build build-cli test test-go test-web test-watch test-browser web-install web-build clean
 
 TEST_DATABASE_URL ?= postgres://postgres:postgres@127.0.0.1:5433/lapin_test?sslmode=disable
 DATABASE_URL ?= postgres://postgres:postgres@127.0.0.1:5433/lapin_test?sslmode=disable
@@ -52,6 +52,9 @@ test-web: web-install
 
 test-watch:
 	bash scripts/watch_test.sh
+
+test-browser:
+	bash scripts/whiteboard_browser_test.sh
 
 clean:
 	go clean

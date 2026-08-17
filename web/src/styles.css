@@ -121,7 +121,7 @@ button, input, textarea { font: inherit; }
 .study-tabs button { padding: .8rem 1rem; border: 0; border-bottom: 2px solid transparent; color: #788078; background: transparent; cursor: pointer; }
 .study-tabs button.active { border-bottom-color: #c6963c; color: #23473a; font-weight: 750; }
 .notes-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(17rem, .75fr); gap: 2rem; }
-.chapter-content { margin: 0; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; font-size: 1.08rem; line-height: 2; white-space: pre-wrap; }
+.chapter-content { margin: 0; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; font-size: 1.08rem; line-height: 2; white-space: normal; }
 .chapter-content .tiptap { outline: none; }
 .autosize-rich-text, .autosize-rich-text .tiptap { height: auto; min-height: 0; }
 .chapter-content .tiptap > :first-child { margin-top: 0; }
@@ -129,6 +129,7 @@ button, input, textarea { font: inherit; }
 .chapter-content .tiptap blockquote { margin-left: 0; padding-left: 1rem; border-left: 3px solid #d5ad52; color: #59655f; }
 .chapter-content .tiptap pre { overflow: auto; padding: 1rem; border-radius: 8px; color: #f6f4ec; background: #263a33; white-space: pre; }
 .chapter-content .tiptap a { color: #2f6ca3; }
+.chapter-content .tiptap img, .rich-text-editor .tiptap img { display: block; width: auto; max-width: 100%; height: auto; margin: 1.25rem auto; border-radius: 8px; box-shadow: 0 4px 16px rgb(31 55 46 / 10%); }
 .chapter-content::selection, .chapter-content .tiptap ::selection { background: #f3d989; }
 .annotation-panel { padding: 1.2rem; border: 1px solid #dcddd4; border-radius: 12px; background: #fbfaf6; }
 .annotation-panel h3 { margin-top: 0; font-family: Georgia, serif; }
@@ -149,7 +150,7 @@ button, input, textarea { font: inherit; }
 .whiteboard-stage { position: relative; overflow: visible; margin: 0; background: transparent; }
 .whiteboard-content-layer { position: absolute; z-index: 1; top: 0; left: 0; overflow: hidden; transform-origin: 0 0; pointer-events: auto; }
 .whiteboard-stage.is-active .whiteboard-content-layer { pointer-events: none; }
-.excalidraw-host { position: absolute; z-index: 2; inset: 0; visibility: hidden; pointer-events: none; touch-action: none; }
+.excalidraw-host { position: absolute; z-index: 2; inset: 0; visibility: hidden; pointer-events: none; touch-action: pan-y; }
 .whiteboard-stage.is-active.is-interactive .excalidraw-host { visibility: visible; pointer-events: auto; }
 .excalidraw-host .excalidraw { overflow: visible !important; }
 .excalidraw-host .excalidraw, .excalidraw-host .excalidraw .App-menu_top { background: transparent !important; }
@@ -191,6 +192,8 @@ button, input, textarea { font: inherit; }
 .rich-text-toolbar .rich-toolbar-bold, .rich-text-toolbar .rich-toolbar-italic { width: 32px; height: 33px; padding: 0; }
 .rich-text-toolbar .rich-toolbar-bold .p-button-label { font-weight: 850; }
 .rich-text-toolbar .rich-toolbar-italic .p-button-label { font-family: Georgia, serif; font-style: italic; font-weight: 700; }
+.rich-text-image-input { display: none; }
+.rich-text-image-error { display: block; padding: .4rem .75rem; color: #a43737; background: #fff1ef; }
 .rich-text-editor .tiptap { min-height: 12rem; padding: .8rem 1rem; outline: none; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; line-height: 1.7; }
 .compact-rich-text-editor .tiptap { min-height: 6rem; }
 .rich-text-editor .tiptap > :first-child { margin-top: 0; }

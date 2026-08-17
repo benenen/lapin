@@ -167,6 +167,10 @@ func validSubjectID(value string) bool {
 }
 
 func importEndpoint(rawBaseURL string) (string, error) {
+	return apiEndpoint(rawBaseURL, "/openapi/v1/subjects/import")
+}
+
+func apiEndpoint(rawBaseURL, path string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawBaseURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return "", fmt.Errorf("LAPIN_BASE_URL must be an absolute HTTP(S) origin")
@@ -180,7 +184,7 @@ func importEndpoint(rawBaseURL string) (string, error) {
 	if parsed.Scheme == "http" && !isLoopbackHost(parsed.Hostname()) {
 		return "", fmt.Errorf("LAPIN_BASE_URL must use HTTPS for non-loopback hosts")
 	}
-	parsed.Path = "/openapi/v1/subjects/import"
+	parsed.Path = path
 	return parsed.String(), nil
 }
 

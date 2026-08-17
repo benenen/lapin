@@ -14,7 +14,7 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.HTTPAddress != ":8080" || settings.HashIDSalt == "" || !settings.SecureCookies {
+	if settings.HTTPAddress != ":8080" || settings.HashIDSalt == "" || !settings.SecureCookies || settings.AssetDir != "data/assets" {
 		t.Fatalf("unexpected non-secret settings: address=%q secure_cookies=%t hashid_salt_empty=%t", settings.HTTPAddress, settings.SecureCookies, settings.HashIDSalt == "")
 	}
 }

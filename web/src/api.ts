@@ -1,4 +1,4 @@
-import type { AccessToken, Annotation, Chapter, Comment, Subject, User, Whiteboard, WhiteboardData } from './types'
+import type { AccessToken, Annotation, Asset, Chapter, Comment, Subject, User, Whiteboard, WhiteboardData } from './types'
 
 interface Envelope<T> {
   data?: T
@@ -34,7 +34,7 @@ async function request<T>(path: string, options: AllowedRequestInit = {}): Promi
     throw new Error(`unsupported HTTP method: ${method}`)
   }
   const headers = new Headers(options.headers)
-  if (options.body) {
+  if (options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
   if (method === 'POST') {
@@ -82,4 +82,9 @@ export const api = {
   createToken: (name: string) =>
     request<{ access_token: string; token: AccessToken }>('/api/v1/access-tokens', { method: 'POST', body: JSON.stringify({ name }) }),
   revokeToken: (id: string) => request<{ revoked: boolean }>(`/api/v1/access-tokens/${id}/revoke`, { method: 'POST', body: '{}' }),
+  uploadAsset: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return request<Asset>('/api/v1/assets', { method: 'POST', body })
+  },
 }

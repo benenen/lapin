@@ -24,4 +24,14 @@ describe('API HTTP method convention', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/chapters/chapter-id/update', expect.objectContaining({ method: 'POST' }))
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/v1/access-tokens/token-id/revoke', expect.objectContaining({ method: 'POST' }))
   })
+
+  it('uploads assets as multipart without overriding the browser boundary', async () => {
+    const file = new File(['png'], 'figure.png', { type: 'image/png' })
+    await api.uploadAsset(file)
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/assets', expect.objectContaining({ method: 'POST' }))
+    expect(options.body).toBeInstanceOf(FormData)
+    expect((options.headers as Headers).has('Content-Type')).toBe(false)
+  })
 })

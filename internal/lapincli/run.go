@@ -31,6 +31,9 @@ func Run(ctx context.Context, args []string, dependencies Dependencies) int {
 		writeUsage(dependencies.Stdout)
 		return exitSuccess
 	}
+	if len(args) >= 2 && args[0] == "course" && args[1] == "prepare-pdf" {
+		return runPreparePDFCommand(ctx, args[2:], dependencies)
+	}
 	if len(args) < 2 || args[0] != "course" || args[1] != "import" {
 		fmt.Fprintln(dependencies.Stderr, "usage error: expected 'course import'")
 		writeUsage(dependencies.Stderr)
@@ -39,7 +42,7 @@ func Run(ctx context.Context, args []string, dependencies Dependencies) int {
 
 	flags := flag.NewFlagSet("course import", flag.ContinueOnError)
 	flags.SetOutput(dependencies.Stderr)
-	manifestPath := flags.String("manifest", "", "path to a version 1 course manifest")
+	manifestPath := flags.String("manifest", "", "path to a version 1 or 2 course manifest")
 	baseURLFlag := flags.String("base-url", "", "Lapin server origin (or use LAPIN_BASE_URL)")
 	flags.Usage = func() { writeImportUsage(dependencies.Stderr) }
 	if err := flags.Parse(args[2:]); err != nil {
@@ -70,19 +73,29 @@ func Run(ctx context.Context, args []string, dependencies Dependencies) int {
 			baseURL = defaultBaseURL
 		}
 	}
-	manifest, body, err := loadManifest(*manifestPath)
+	bundle, err := loadBundle(*manifestPath)
 	if err != nil {
 		fmt.Fprintf(dependencies.Stderr, "manifest error: %s\n", sanitizeDiagnostic(err.Error(), ""))
 		return exitUsage
 	}
-	result, err := importCourse(ctx, baseURL, token, body, dependencies.HTTPClient)
+	body, err := json.Marshal(bundle.Request)
+	if err != nil {
+		fmt.Fprintf(dependencies.Stderr, "manifest error: %s\n", sanitizeDiagnostic(err.Error(), ""))
+		return exitUsage
+	}
+	var result importResult
+	if bundle.Version == manifestVersionV2 || len(body) > maxRequestBytes {
+		result, err = importStagedBundle(ctx, baseURL, token, bundle, dependencies.HTTPClient)
+	} else {
+		result, err = importCourse(ctx, baseURL, token, body, dependencies.HTTPClient)
+	}
 	if err != nil {
 		fmt.Fprintf(dependencies.Stderr, "import error: %s\n", sanitizeDiagnostic(err.Error(), token))
 		return exitRemote
 	}
-	result.ExternalID = manifest.ExternalID
-	result.Title = manifest.Title
-	result.ChapterCount = countImportedChapters(manifest.Chapters)
+	result.ExternalID = bundle.Request.ExternalID
+	result.Title = bundle.Request.Title
+	result.ChapterCount = countImportedChapters(bundle.Request.Chapters)
 	encoder := json.NewEncoder(dependencies.Stdout)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(result); err != nil {
@@ -108,6 +121,7 @@ func countImportedChapters(chapters []importChapterRequest) int {
 func writeUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage:")
 	fmt.Fprintln(writer, "  lapin-cli course import --manifest <course.json> [--base-url <origin>]")
+	fmt.Fprintln(writer, "  lapin-cli course prepare-pdf --pdf <book.pdf> --output <bundle> --external-id <id> --title <title> [--profile <name>] [--reuse-chapter-tree <manifest>]")
 }
 
 func writeImportUsage(writer io.Writer) {

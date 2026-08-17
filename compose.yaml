@@ -26,8 +26,12 @@ services:
       HASHID_SALT: ${HASHID_SALT:-lapin-development-salt}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ASSET_DIR: /var/lib/lapin/assets
+    volumes:
+      - lapin-assets:/var/lib/lapin/assets
     ports:
       - "127.0.0.1:8080:8080"
 
 volumes:
   lapin-postgres:
+  lapin-assets:

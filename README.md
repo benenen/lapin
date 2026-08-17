@@ -75,7 +75,7 @@ export LAPIN_BASE_URL='https://lapin.example.com'
 ./bin/lapin-cli course import --manifest ./course/course.json
 ```
 
-manifest 使用 `version: 1`，章节可通过 `children` 递归嵌套，`content_file` 相对 manifest 所在目录解析：
+纯 Markdown 课程可使用 `version: 1`。章节通过 `children` 递归嵌套，`content_file` 相对 manifest 所在目录解析：
 
 ```json
 {
@@ -99,6 +99,50 @@ manifest 使用 `version: 1`，章节可通过 `children` 递归嵌套，`conten
   ]
 }
 ```
+
+带本地图片或请求体超过 1 MiB 的课程使用 `version: 2`。CLI 会创建暂存任务，将图片按每批最多 16 张上传、分批提交章节，并在所有批次完整后一次性发布课程；中途失败不会暴露半成品课程。同一课程只允许一个进行中的任务，24 小时无活动会自动失效，也可通过 `POST /openapi/v1/subject-imports/:id/abort` 主动终止：
+
+```json
+{
+  "version": 2,
+  "external_id": "agent-book-2026",
+  "title": "深入理解 AI Agent",
+  "assets": [
+    {"key": "figure-01", "file": "assets/figure-01.png"}
+  ],
+  "chapters": [
+    {
+      "external_id": "chapter-01",
+      "title": "第 1 章",
+      "content_file": "chapters/chapter-01.md"
+    }
+  ]
+}
+```
+
+章节 Markdown 用 `lapin-asset://figure-01` 引用 manifest 中的图片。上传成功后 CLI 会将其替换为站内预览地址。服务端只接受 PNG/JPEG，每张不超过 10 MiB；单次导入最多 64 MiB，每用户最多 5,000 张/512 MiB，实例总计最多 20,000 张/2 GiB。文件按 SHA-256 内容寻址存为 `<ASSET_DIR>/<hash前两位>/<完整hash>.<扩展名>`，相同内容只保存一份。
+
+### PDF 转 Markdown bundle
+
+PDF 转换是独立的 `internal/documentconv/pdf` package：通用层提取文字块、字体、坐标和图片，中文技术书籍的“第 N 章 / 图 N-N”识别放在可替换 profile 中。CLI 只负责生成可检查、可修改的 Markdown bundle。需要系统已安装 Poppler 的 `pdftohtml` 和 `pdftocairo`：
+
+```bash
+./bin/lapin-cli course prepare-pdf \
+  --pdf '/absolute/path/book.pdf' \
+  --output /tmp/book-bundle \
+  --external-id agent-book-2026 \
+  --title '深入理解 AI Agent' \
+  --profile zh-technical-book
+
+# 先检查 /tmp/book-bundle/chapters、assets 和 course.json，再导入
+./bin/lapin-cli course import --manifest /tmp/book-bundle/course.json
+```
+
+PDF 的语义结构并不可靠：转换器会恢复常见段落、标题、列表、连续等宽代码行和内嵌位图，并把带可识别图题的矢量区域渲染为 PNG。多栏表格目前保留为带 `|` 分隔的可读文本，不伪装成 Web 不支持的 GFM 表格；复杂表格、跨栏排版和代码块仍应在导入前人工检查生成的 Markdown。
+
+中文技术书籍使用 `--profile zh-technical-book`（默认），识别“第 N 章”和“图 N-N”；英文或其他按大字号二级标题分章的书籍可使用 `--profile generic-book`。
+
+重新转换已经导入过的 PDF 时，应传入上一次审核过的 manifest：`--reuse-chapter-tree /path/to/previous/course.json`。CLI 会按章节标题复用既有 external ID 和分组树，并把新识别章节追加为新节点，避免因重新生成 ID 造成重复章节。标题发生变化时先人工更新基准 manifest 的映射。
 
 CLI 会拒绝未知字段、非 UTF-8 文档、目录穿越、逃逸到 manifest 目录外的软链接、超出服务端限制的内容，以及对非本机地址使用明文 HTTP。它不会自动重试 POST 或跟随重定向。远程网络较慢且需要代理时，可使用标准 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY` 环境变量；不要把 Access Token 写入代理配置或日志。
 
@@ -143,6 +187,8 @@ npm --prefix web run dev
 ```bash
 make test
 make build
+# 预先安装固定版本 playwright-cli 0.1.18；Vite 已在 5173 运行时执行真实 Chromium 回归
+make test-browser
 ```
 
 配置项：
@@ -157,5 +203,6 @@ make build
 | `TRUSTED_PROXY_CIDRS` | 否 | 空 | 可信反向代理网段，逗号分隔；仅这些来源可提供客户端 IP 转发头 |
 | `ADMIN_EMAIL` | 否 | 空 | 首次管理员邮箱；必须与 `ADMIN_PASSWORD` 成对设置 |
 | `ADMIN_PASSWORD` | 否 | 空 | 首次管理员密码，至少 12 个 Unicode 字符且 UTF-8 不超过 128 字节；不会覆盖已有管理员密码 |
+| `ASSET_DIR` | 否 | `data/assets` | 图片内容存储目录；生产和容器部署应挂载持久卷 |
 
 默认 Compose 仅绑定 `127.0.0.1:8080`，适合本机体验。远程部署请放在 HTTPS 反向代理后面，并设置 `APP_ENV=production`、`SECURE_COOKIES=true` 和反向代理实际来源的 `TRUSTED_PROXY_CIDRS`；数据库密码和 `HASHID_SALT` 也应改为部署环境的私密配置。生产模式会拒绝不安全的 Cookie 配置。

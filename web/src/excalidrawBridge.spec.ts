@@ -43,14 +43,29 @@ describe('Excalidraw bridge', () => {
     expect(excalidrawElement?.props.renderTopRightUI).toBeTypeOf('function')
   })
 
-  it('locks scrolling and zooming to the chapter coordinate system', async () => {
+  it('keeps the canvas camera locked while allowing document wheel scrolling', async () => {
     const host = document.createElement('div')
+    const parent = document.createElement('div')
+    const bubbledWheel = vi.fn()
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {})
+    parent.addEventListener('wheel', bubbledWheel)
+    parent.append(host)
     const bridge = mountExcalidraw(host, { width: 960, height: 640, topInset: 0 })
 
     const excalidrawElement = reactRoot.render.mock.calls[0]?.[0]
     expect(excalidrawElement?.props.detectScroll).toBe(true)
     expect(excalidrawElement?.props.onScrollChange).toBeTypeOf('function')
-    expect(host.dispatchEvent(new WheelEvent('wheel', { cancelable: true }))).toBe(false)
+    const documentScroll = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 120 })
+    expect(host.dispatchEvent(documentScroll)).toBe(false)
+    expect(documentScroll.defaultPrevented).toBe(true)
+    expect(scrollBy).toHaveBeenCalledWith(0, 120)
+    expect(bubbledWheel).not.toHaveBeenCalled()
+
+    const zoom = new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: 120 })
+    expect(host.dispatchEvent(zoom)).toBe(false)
+    expect(zoom.defaultPrevented).toBe(true)
+    expect(scrollBy).toHaveBeenCalledTimes(1)
+    expect(bubbledWheel).not.toHaveBeenCalled()
 
     const api = {
       refresh: vi.fn(),
@@ -98,6 +113,7 @@ describe('Excalidraw bridge', () => {
     await new Promise((resolve) => requestAnimationFrame(resolve))
     host.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
     expect(api.refresh).not.toHaveBeenCalled()
+    scrollBy.mockRestore()
   })
 
   it('uses the macOS command modifier for toolbar history actions', () => {

@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
+	"github.com/benenen/lapin/internal/assetcleanup"
+	"github.com/benenen/lapin/internal/assetstore"
 	"github.com/benenen/lapin/internal/bootstrap"
 	"github.com/benenen/lapin/internal/config"
 	"github.com/benenen/lapin/internal/database"
@@ -32,12 +35,30 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	assets, err := assetstore.New(settings.AssetDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer assets.Close()
+	if err := assetcleanup.Reconcile(ctx, pool, assets); err != nil {
+		log.Fatal(err)
+	}
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := assetcleanup.Reconcile(ctx, pool, assets); err != nil {
+				log.Printf("asset cleanup failed: %v", err)
+			}
+		}
+	}()
 
 	server := httpapi.New(pool, httpapi.Options{
 		HostPorts:         settings.HTTPAddress,
 		SecureCookies:     settings.SecureCookies,
 		HashIDSalt:        settings.HashIDSalt,
 		TrustedProxyCIDRs: settings.TrustedProxyCIDRs,
+		AssetStore:        assets,
 	})
 	server.Spin()
 }

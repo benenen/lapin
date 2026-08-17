@@ -440,7 +440,7 @@ function setActiveTab(tab: string) {
           />
         </label>
         <label><span>章节标题</span><InputText v-model="newChapter.title" required maxlength="200" fluid /></label>
-        <label><span>正文（Markdown 存储）</span><RichTextEditor v-model="newChapter.content" /></label>
+        <label><span>正文（Markdown 存储）</span><RichTextEditor v-model="newChapter.content" allow-images /></label>
         <Button type="submit" label="保存章节" />
       </form>
     </Dialog>
@@ -452,7 +452,7 @@ function setActiveTab(tab: string) {
           <span v-if="activeChapter?.external_id">再次通过 OpenAPI 导入时，本章修改也可能被覆盖。</span>
         </Message>
         <label><span>章节标题</span><InputText v-model="editChapterDraft.title" required maxlength="200" fluid /></label>
-        <label><span>正文（Markdown 存储）</span><RichTextEditor v-model="editChapterDraft.content" /></label>
+        <label><span>正文（Markdown 存储）</span><RichTextEditor v-model="editChapterDraft.content" allow-images /></label>
         <Button type="submit" label="保存修改" :loading="editChapterLoading" />
       </form>
     </Dialog>

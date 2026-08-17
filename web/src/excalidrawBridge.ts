@@ -143,8 +143,17 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
   let viewportResetPending = false
   element.tabIndex = -1
 
-  const preventWheel = (event: WheelEvent) => {
+  const lockCanvasWheel = (event: WheelEvent) => {
+    // Excalidraw also listens above the host and may cancel the browser default
+    // before this capture handler runs. Route plain wheel deltas to the document
+    // explicitly, while keeping every wheel gesture out of the fixed canvas.
     event.preventDefault()
+    if (!event.ctrlKey && !event.metaKey) {
+      const multiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? window.innerHeight : 1
+      window.scrollBy(event.deltaX * multiplier, event.deltaY * multiplier)
+    }
     event.stopImmediatePropagation()
   }
   const preventPinch = (event: TouchEvent) => {
@@ -168,7 +177,7 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
     // Excalidraw caches DOM offsets. Commit its refresh before React's bubble-phase pointer handler.
     if (api) flushSync(() => api?.refresh())
   }
-  element.addEventListener('wheel', preventWheel, { capture: true, passive: false })
+  element.addEventListener('wheel', lockCanvasWheel, { capture: true, passive: false })
   element.addEventListener('touchmove', preventPinch, { capture: true, passive: false })
   element.addEventListener('pointerdown', refreshViewportOffsetBeforePointer, { capture: true })
   window.addEventListener('scroll', refreshViewportOffset, { capture: true, passive: true })
@@ -273,7 +282,7 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
       api = null
       if (scrollRefreshFrame !== null) cancelAnimationFrame(scrollRefreshFrame)
       scrollRefreshFrame = null
-      element.removeEventListener('wheel', preventWheel, { capture: true })
+      element.removeEventListener('wheel', lockCanvasWheel, { capture: true })
       element.removeEventListener('touchmove', preventPinch, { capture: true })
       element.removeEventListener('pointerdown', refreshViewportOffsetBeforePointer, { capture: true })
       window.removeEventListener('scroll', refreshViewportOffset, { capture: true })

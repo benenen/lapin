@@ -12,10 +12,10 @@ mkdir -p "$fake_bin"
 cat >"$fake_bin/air" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
   "${ADMIN_EMAIL-unset}" "${ADMIN_PASSWORD-unset}" "${HTTP_ADDR-unset}" \
   "${DATABASE_URL-unset}" "${HASHID_SALT-unset}" "${APP_ENV-unset}" \
-  "${SECURE_COOKIES-unset}" "${TRUSTED_PROXY_CIDRS-unset}" \
+  "${SECURE_COOKIES-unset}" "${TRUSTED_PROXY_CIDRS-unset}" "${ASSET_DIR-unset}" \
   >"$TEST_AIR_ENV"
 while [[ ! -f "$TEST_NPM_ENV" ]]; do
   sleep 0.01
@@ -25,20 +25,20 @@ EOF
 cat >"$fake_bin/bootstrap-admin" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
   "${ADMIN_EMAIL-unset}" "${ADMIN_PASSWORD-unset}" "${DATABASE_URL-unset}" \
   "${HASHID_SALT-unset}" "${APP_ENV-unset}" "${SECURE_COOKIES-unset}" \
-  "${TRUSTED_PROXY_CIDRS-unset}" \
+  "${TRUSTED_PROXY_CIDRS-unset}" "${ASSET_DIR-unset}" \
   >"$TEST_BOOTSTRAP_ENV"
 EOF
 
 cat >"$fake_bin/npm" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
   "${ADMIN_EMAIL-unset}" "${ADMIN_PASSWORD-unset}" "${DATABASE_URL-unset}" \
   "${HASHID_SALT-unset}" "${APP_ENV-unset}" "${SECURE_COOKIES-unset}" \
-  "${TRUSTED_PROXY_CIDRS-unset}" \
+  "${TRUSTED_PROXY_CIDRS-unset}" "${ASSET_DIR-unset}" \
   >"$TEST_NPM_ENV"
 sleep 1
 EOF
@@ -46,10 +46,10 @@ EOF
 cat >"$fake_bin/make" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
   "${ADMIN_EMAIL-unset}" "${ADMIN_PASSWORD-unset}" \
   "${DATABASE_URL-unset}" "${HASHID_SALT-unset}" "${APP_ENV-unset}" \
-  "${SECURE_COOKIES-unset}" "${TRUSTED_PROXY_CIDRS-unset}" \
+  "${SECURE_COOKIES-unset}" "${TRUSTED_PROXY_CIDRS-unset}" "${ASSET_DIR-unset}" \
   "${MAKEFLAGS-unset}" "${MAKEOVERRIDES-unset}" "${MFLAGS-unset}" "${GNUMAKEFLAGS-unset}" \
   >"$TEST_PREPARE_ENV"
 EOF
@@ -81,30 +81,31 @@ assert_environment() {
 
 local_database='postgres://postgres:postgres@127.0.0.1:5433/lapin_test?sslmode=disable'
 private_hashid_salt='test-private-hashid-salt'
+asset_directory="$test_root/assets"
 
 run_watch default env -u ADMIN_EMAIL -u ADMIN_PASSWORD -u HTTP_ADDR \
   DATABASE_URL="$local_database" HASHID_SALT="$private_hashid_salt" APP_ENV='development' \
-  SECURE_COOKIES='false' TRUSTED_PROXY_CIDRS='127.0.0.1/32'
+  SECURE_COOKIES='false' TRUSTED_PROXY_CIDRS='127.0.0.1/32' ASSET_DIR="$asset_directory"
 assert_environment "$test_root/default-bootstrap.env" \
-  'admin@localhost' 'admin12345678' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32'
+  'admin@localhost' 'admin12345678' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32' "$asset_directory"
 assert_environment "$test_root/default-prepare.env" \
-  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
+  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
 assert_environment "$test_root/default-air.env" \
-  'unset' 'unset' '127.0.0.1:8080' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32'
+  'unset' 'unset' '127.0.0.1:8080' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32' "$asset_directory"
 assert_environment "$test_root/default-npm.env" \
-  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
+  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
 
 run_watch override env ADMIN_EMAIL='owner@example.com' ADMIN_PASSWORD='custom-development-password' \
   DATABASE_URL="$local_database" HASHID_SALT="$private_hashid_salt" APP_ENV='development' \
-  SECURE_COOKIES='false' TRUSTED_PROXY_CIDRS='127.0.0.1/32'
+  SECURE_COOKIES='false' TRUSTED_PROXY_CIDRS='127.0.0.1/32' ASSET_DIR="$asset_directory"
 assert_environment "$test_root/override-bootstrap.env" \
-  'owner@example.com' 'custom-development-password' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32'
+  'owner@example.com' 'custom-development-password' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32' "$asset_directory"
 assert_environment "$test_root/override-prepare.env" \
-  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
+  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
 assert_environment "$test_root/override-air.env" \
-  'unset' 'unset' '127.0.0.1:8080' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32'
+  'unset' 'unset' '127.0.0.1:8080' "$local_database" "$private_hashid_salt" 'development' 'false' '127.0.0.1/32' "$asset_directory"
 assert_environment "$test_root/override-npm.env" \
-  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
+  'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset' 'unset'
 
 assert_rejected() {
   local name=$1

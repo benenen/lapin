@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/benenen/lapin/internal/assetstore"
 	"github.com/benenen/lapin/internal/auth"
 	"github.com/benenen/lapin/internal/identifier"
 )
@@ -15,6 +16,7 @@ import (
 type Options struct {
 	SecureCookies     bool
 	TrustedProxyCIDRs []*net.IPNet
+	AssetStore        *assetstore.Store
 }
 
 type Handler struct {
@@ -27,6 +29,7 @@ type Handler struct {
 	accountLimiter *fixedWindowLimiter
 	passwordWork   chan struct{}
 	clientIP       app.ClientIP
+	assetStore     *assetstore.Store
 }
 
 var (
@@ -51,6 +54,7 @@ func New(db *pgxpool.Pool, ids *identifier.Codec, options Options) *Handler {
 		openAPILimiter: newFixedWindowLimiter(60, time.Minute),
 		accountLimiter: newFixedWindowLimiter(10, time.Minute),
 		passwordWork:   make(chan struct{}, 2),
+		assetStore:     options.AssetStore,
 		clientIP: app.ClientIPWithOption(app.ClientIPOptions{
 			RemoteIPHeaders: []string{"X-Forwarded-For", "X-Real-IP"},
 			TrustedCIDRs:    options.TrustedProxyCIDRs,

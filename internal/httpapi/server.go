@@ -7,6 +7,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/benenen/lapin/internal/assetstore"
 	"github.com/benenen/lapin/internal/httpapi/handler"
 	"github.com/benenen/lapin/internal/identifier"
 	"github.com/benenen/lapin/web"
@@ -17,6 +18,7 @@ type Options struct {
 	SecureCookies     bool
 	HashIDSalt        string
 	TrustedProxyCIDRs []*net.IPNet
+	AssetStore        *assetstore.Store
 }
 
 type App struct {
@@ -27,7 +29,7 @@ func New(db *pgxpool.Pool, options Options) *App {
 	if options.HostPorts == "" {
 		options.HostPorts = ":8080"
 	}
-	h := server.Default(server.WithHostPorts(options.HostPorts))
+	h := server.Default(server.WithHostPorts(options.HostPorts), server.WithMaxRequestBodySize(assetstore.MaxAssetBytes+(1<<20)))
 	h.SetClientIPFunc(hertzapp.ClientIPWithOption(hertzapp.ClientIPOptions{
 		RemoteIPHeaders: []string{"X-Forwarded-For", "X-Real-IP"},
 		TrustedCIDRs:    options.TrustedProxyCIDRs,
@@ -37,7 +39,7 @@ func New(db *pgxpool.Pool, options Options) *App {
 		panic(err)
 	}
 	app := &App{Hertz: h}
-	handlers := handler.New(db, ids, handler.Options{SecureCookies: options.SecureCookies, TrustedProxyCIDRs: options.TrustedProxyCIDRs})
+	handlers := handler.New(db, ids, handler.Options{SecureCookies: options.SecureCookies, TrustedProxyCIDRs: options.TrustedProxyCIDRs, AssetStore: options.AssetStore})
 	app.routes(handlers)
 	return app
 }
@@ -58,6 +60,8 @@ func (a *App) routes(h *handler.Handler) {
 	protected.GET("/access-tokens", h.ListAccessTokens)
 	protected.POST("/access-tokens", h.RequireCSRF(), h.CreateAccessToken)
 	protected.POST("/access-tokens/:id/revoke", h.RequireCSRF(), h.RevokeAccessToken)
+	protected.POST("/assets", h.RequireCSRF(), h.UploadAsset)
+	protected.GET("/assets/:id/content", h.GetAssetContent)
 	protected.GET("/subjects", h.ListSubjects)
 	protected.POST("/subjects", h.RequireCSRF(), h.CreateSubject)
 	protected.GET("/subjects/:id", h.GetSubject)
@@ -75,6 +79,13 @@ func (a *App) routes(h *handler.Handler) {
 	openapi := a.Group("/openapi/v1")
 	openapi.Use(h.OpenAPIRateLimit())
 	openapi.POST("/subjects/import", h.RequireAccessToken(), h.ImportSubject)
+	openapi.POST("/assets", h.RequireAccessToken(), h.UploadAsset)
+	openapi.POST("/subject-imports", h.RequireAccessToken(), h.BeginSubjectImport)
+	openapi.GET("/subject-imports/:id", h.RequireAccessToken(), h.GetSubjectImport)
+	openapi.POST("/subject-imports/:id/assets", h.RequireAccessToken(), h.UploadSubjectImportAsset)
+	openapi.POST("/subject-imports/:id/chapters", h.RequireAccessToken(), h.UploadSubjectImportChapters)
+	openapi.POST("/subject-imports/:id/commit", h.RequireAccessToken(), h.CommitSubjectImport)
+	openapi.POST("/subject-imports/:id/abort", h.RequireAccessToken(), h.AbortSubjectImport)
 
 	a.NoRoute(web.Handler())
 }

@@ -1,0 +1,2 @@
+ALTER TABLE assets
+    ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;

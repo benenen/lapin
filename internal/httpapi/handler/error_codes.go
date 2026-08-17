@@ -6,6 +6,8 @@ const (
 	errorCodeDatabaseUnavailable errorCode = "database_unavailable"
 	errorCodeEmailExists         errorCode = "email_exists"
 	errorCodeInternal            errorCode = "internal_error"
+	errorCodeImportConflict      errorCode = "import_conflict"
+	errorCodeImportIncomplete    errorCode = "import_incomplete"
 	errorCodeInvalidAccessToken  errorCode = "invalid_access_token"
 	errorCodeInvalidCredentials  errorCode = "invalid_credentials"
 	errorCodeInvalidCSRF         errorCode = "invalid_csrf"

@@ -97,51 +97,64 @@ func (h *Handler) ImportSubject(ctx context.Context, c *app.RequestContext) {
 }
 
 func (h *Handler) storeSubject(ctx context.Context, ownerID int64, externalID *string, title, description string, tags []string, chapters []chapterInput) (subjectView, error) {
-	title = strings.TrimSpace(title)
-	description = strings.TrimSpace(description)
-	normalizedTags, ok := normalizeTags(tags)
-	imported := externalID != nil
-	if title == "" || utf8.RuneCountInString(title) > 200 || utf8.RuneCountInString(description) > 4000 || !ok || countChapters(chapters) > 100 || !validateChapterInputs(chapters, imported) {
-		return subjectView{}, errInvalidSubject
-	}
-
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
 		return subjectView{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	subject := database.Subject{OwnerID: ownerID, ExternalID: externalID, Title: title, Description: description}
-	var subjectID int64
-	if imported {
-		subjectID, err = database.UpsertExternalSubject(ctx, tx, subject)
-	} else {
-		subjectID, err = database.InsertSubject(ctx, tx, subject)
-	}
+	subjectID, err := h.storeSubjectTx(ctx, tx, ownerID, externalID, title, description, tags, chapters)
 	if err != nil {
 		return subjectView{}, err
-	}
-	if err := database.DeleteTagsBySubject(ctx, tx, subjectID); err != nil {
-		return subjectView{}, err
-	}
-	for _, tag := range normalizedTags {
-		if _, err := database.InsertTag(ctx, tx, subjectID, tag); err != nil {
-			return subjectView{}, err
-		}
-	}
-	position := 0
-	importedChapterIDs := make([]int64, 0, countChapters(chapters))
-	if err := storeChapterTree(ctx, tx, subjectID, nil, chapters, &position, imported, &importedChapterIDs); err != nil {
-		return subjectView{}, err
-	}
-	if imported {
-		if err := database.RepositionUnimportedChapters(ctx, tx, subjectID, importedChapterIDs, position); err != nil {
-			return subjectView{}, err
-		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return subjectView{}, err
 	}
 	return h.fetchSubject(ctx, subjectID)
+}
+
+func (h *Handler) storeSubjectTx(ctx context.Context, db database.DBTX, ownerID int64, externalID *string, title, description string, tags []string, chapters []chapterInput) (int64, error) {
+	title = strings.TrimSpace(title)
+	description = strings.TrimSpace(description)
+	normalizedTags, ok := normalizeTags(tags)
+	imported := externalID != nil
+	if imported {
+		normalizedExternalID := strings.TrimSpace(*externalID)
+		externalID = &normalizedExternalID
+	}
+	if title == "" || utf8.RuneCountInString(title) > 200 || utf8.RuneCountInString(description) > 4000 || !ok || countChapters(chapters) > 100 || !validateChapterInputs(chapters, imported) {
+		return 0, errInvalidSubject
+	}
+
+	subject := database.Subject{OwnerID: ownerID, ExternalID: externalID, Title: title, Description: description}
+	var subjectID int64
+	var err error
+	if imported {
+		subjectID, err = database.UpsertExternalSubject(ctx, db, subject)
+	} else {
+		subjectID, err = database.InsertSubject(ctx, db, subject)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if err := database.DeleteTagsBySubject(ctx, db, subjectID); err != nil {
+		return 0, err
+	}
+	for _, tag := range normalizedTags {
+		if _, err := database.InsertTag(ctx, db, subjectID, tag); err != nil {
+			return 0, err
+		}
+	}
+	position := 0
+	importedChapterIDs := make([]int64, 0, countChapters(chapters))
+	if err := h.storeChapterTree(ctx, db, ownerID, subjectID, nil, chapters, &position, imported, &importedChapterIDs); err != nil {
+		return 0, err
+	}
+	if imported {
+		if err := database.RepositionUnimportedChapters(ctx, db, subjectID, importedChapterIDs, position); err != nil {
+			return 0, err
+		}
+	}
+	return subjectID, nil
 }
 
 func (h *Handler) ListSubjects(ctx context.Context, c *app.RequestContext) {
@@ -314,6 +327,13 @@ func (h *Handler) CreateChapter(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 500, errorCodeInternal, "创建章节失败")
 		return
 	}
+	if err := h.replaceChapterAssetsFromContent(ctx, tx, currentUser(c).ID, chapter.ID, request.Content); errors.Is(err, errInvalidSubject) {
+		writeError(c, 400, errorCodeInvalidInput, "章节图片必须来自当前用户的 Lapin 图片库")
+		return
+	} else if err != nil {
+		writeError(c, 500, errorCodeInternal, "关联章节图片失败")
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		writeError(c, 500, errorCodeInternal, "创建章节失败")
 		return
@@ -340,12 +360,30 @@ func (h *Handler) UpdateChapter(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, errorCodeInvalidInput, "请检查章节标题和内容")
 		return
 	}
-	chapter, err := database.UpdateChapterForOwner(ctx, h.db, chapterID, currentUser(c).ID, request.Title, request.Content)
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		writeError(c, 500, errorCodeInternal, "更新章节失败")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	ownerID := currentUser(c).ID
+	chapter, err := database.UpdateChapterForOwner(ctx, tx, chapterID, ownerID, request.Title, request.Content)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(c, 404, errorCodeNotFound, "章节不存在或无权操作")
 		return
 	}
 	if err != nil {
+		writeError(c, 500, errorCodeInternal, "更新章节失败")
+		return
+	}
+	if err := h.replaceChapterAssetsFromContent(ctx, tx, ownerID, chapter.ID, request.Content); errors.Is(err, errInvalidSubject) {
+		writeError(c, 400, errorCodeInvalidInput, "章节图片必须来自当前用户的 Lapin 图片库")
+		return
+	} else if err != nil {
+		writeError(c, 500, errorCodeInternal, "关联章节图片失败")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
 		writeError(c, 500, errorCodeInternal, "更新章节失败")
 		return
 	}
@@ -458,7 +496,7 @@ func validateChapterInputs(chapters []chapterInput, requireExternalID bool) bool
 	return true
 }
 
-func storeChapterTree(ctx context.Context, db database.DBTX, subjectID int64, parentID *int64, chapters []chapterInput, position *int, imported bool, importedIDs *[]int64) error {
+func (h *Handler) storeChapterTree(ctx context.Context, db database.DBTX, ownerID, subjectID int64, parentID *int64, chapters []chapterInput, position *int, imported bool, importedIDs *[]int64) error {
 	for _, input := range chapters {
 		input.ExternalID = strings.TrimSpace(input.ExternalID)
 		chapter := database.Chapter{
@@ -480,8 +518,11 @@ func storeChapterTree(ctx context.Context, db database.DBTX, subjectID int64, pa
 		if imported {
 			*importedIDs = append(*importedIDs, chapter.ID)
 		}
+		if err := h.replaceChapterAssetsFromContent(ctx, db, ownerID, chapter.ID, input.Content); err != nil {
+			return err
+		}
 		(*position)++
-		if err := storeChapterTree(ctx, db, subjectID, &chapter.ID, input.Children, position, imported, importedIDs); err != nil {
+		if err := h.storeChapterTree(ctx, db, ownerID, subjectID, &chapter.ID, input.Children, position, imported, importedIDs); err != nil {
 			return err
 		}
 	}

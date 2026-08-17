@@ -33,6 +33,7 @@ go.work.sum
 /web/coverage/
 /web/dist/
 /web/public/excalidraw-assets/
+/data/
 
 # Editor/IDE
 # .idea/

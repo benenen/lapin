@@ -9,12 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/benenen/lapin/internal/assetstore"
 )
 
 const (
-	manifestVersion       = 1
+	manifestVersionV1     = 1
+	manifestVersionV2     = 2
 	maxManifestBytes      = 1 << 20
 	maxRequestBytes       = 1 << 20
+	maxBundleAssetBytes   = 64 << 20
+	maxBundleAssets       = 300
 	maxChapterContentRune = 200_000
 	maxChapterContentByte = maxChapterContentRune * utf8.UTFMax
 )
@@ -25,7 +30,13 @@ type courseManifest struct {
 	Title       string            `json:"title"`
 	Description string            `json:"description"`
 	Tags        []string          `json:"tags"`
+	Assets      []assetManifest   `json:"assets,omitempty"`
 	Chapters    []chapterManifest `json:"chapters"`
+}
+
+type assetManifest struct {
+	Key  string `json:"key"`
+	File string `json:"file"`
 }
 
 type chapterManifest struct {
@@ -50,6 +61,18 @@ type importChapterRequest struct {
 	Children   []importChapterRequest `json:"children,omitempty"`
 }
 
+type localAsset struct {
+	Key      string
+	Filename string
+	Content  []byte
+}
+
+type loadedBundle struct {
+	Version int
+	Request importSubjectRequest
+	Assets  []localAsset
+}
+
 type manifestLoader struct {
 	root            *os.Root
 	seenExternalIDs map[string]struct{}
@@ -57,45 +80,63 @@ type manifestLoader struct {
 }
 
 func loadManifest(path string) (importSubjectRequest, []byte, error) {
+	bundle, err := loadBundle(path)
+	if err != nil {
+		return importSubjectRequest{}, nil, err
+	}
+	encoded, err := json.Marshal(bundle.Request)
+	if err != nil {
+		return importSubjectRequest{}, nil, fmt.Errorf("encode import request: %w", err)
+	}
+	if len(encoded) > maxRequestBytes {
+		return importSubjectRequest{}, nil, fmt.Errorf("encoded import request exceeds %d bytes", maxRequestBytes)
+	}
+	return bundle.Request, encoded, nil
+}
+
+func loadBundle(path string) (loadedBundle, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return importSubjectRequest{}, nil, fmt.Errorf("resolve manifest path: %w", err)
+		return loadedBundle{}, fmt.Errorf("resolve manifest path: %w", err)
 	}
 	root, err := os.OpenRoot(filepath.Dir(absPath))
 	if err != nil {
-		return importSubjectRequest{}, nil, fmt.Errorf("open manifest directory: %w", err)
+		return loadedBundle{}, fmt.Errorf("open manifest directory: %w", err)
 	}
 	defer root.Close()
 	body, err := readRegularFile(root, filepath.Base(absPath), maxManifestBytes)
 	if err != nil {
-		return importSubjectRequest{}, nil, fmt.Errorf("read manifest within its containing directory: %w", err)
+		return loadedBundle{}, fmt.Errorf("read manifest within its containing directory: %w", err)
 	}
 	if !utf8.Valid(body) {
-		return importSubjectRequest{}, nil, fmt.Errorf("manifest must be valid UTF-8")
+		return loadedBundle{}, fmt.Errorf("manifest must be valid UTF-8")
 	}
 	var manifest courseManifest
 	if err := decodeStrictJSON(body, &manifest); err != nil {
-		return importSubjectRequest{}, nil, fmt.Errorf("decode manifest: %w", err)
+		return loadedBundle{}, fmt.Errorf("decode manifest: %w", err)
 	}
-	if manifest.Version != manifestVersion {
-		return importSubjectRequest{}, nil, fmt.Errorf("manifest version must be %d", manifestVersion)
+	if manifest.Version != manifestVersionV1 && manifest.Version != manifestVersionV2 {
+		return loadedBundle{}, fmt.Errorf("manifest version must be %d or %d", manifestVersionV1, manifestVersionV2)
+	}
+	if manifest.Version == manifestVersionV1 && len(manifest.Assets) != 0 {
+		return loadedBundle{}, fmt.Errorf("manifest assets require version %d", manifestVersionV2)
 	}
 
 	externalID := strings.TrimSpace(manifest.ExternalID)
 	title := strings.TrimSpace(manifest.Title)
 	description := strings.TrimSpace(manifest.Description)
 	if externalID == "" || utf8.RuneCountInString(externalID) > 160 {
-		return importSubjectRequest{}, nil, fmt.Errorf("course external_id is required and must not exceed 160 characters")
+		return loadedBundle{}, fmt.Errorf("course external_id is required and must not exceed 160 characters")
 	}
 	if title == "" || utf8.RuneCountInString(title) > 200 {
-		return importSubjectRequest{}, nil, fmt.Errorf("course title is required and must not exceed 200 characters")
+		return loadedBundle{}, fmt.Errorf("course title is required and must not exceed 200 characters")
 	}
 	if utf8.RuneCountInString(description) > 4000 {
-		return importSubjectRequest{}, nil, fmt.Errorf("course description must not exceed 4000 characters")
+		return loadedBundle{}, fmt.Errorf("course description must not exceed 4000 characters")
 	}
 	tags, err := normalizeManifestTags(manifest.Tags)
 	if err != nil {
-		return importSubjectRequest{}, nil, err
+		return loadedBundle{}, err
 	}
 
 	loader := manifestLoader{
@@ -106,7 +147,7 @@ func loadManifest(path string) (importSubjectRequest, []byte, error) {
 	for _, chapter := range manifest.Chapters {
 		loaded, err := loader.loadChapter(chapter)
 		if err != nil {
-			return importSubjectRequest{}, nil, err
+			return loadedBundle{}, err
 		}
 		chapters = append(chapters, loaded)
 	}
@@ -118,14 +159,32 @@ func loadManifest(path string) (importSubjectRequest, []byte, error) {
 		Tags:        tags,
 		Chapters:    chapters,
 	}
-	encoded, err := json.Marshal(request)
-	if err != nil {
-		return importSubjectRequest{}, nil, fmt.Errorf("encode import request: %w", err)
+	assets := make([]localAsset, 0, len(manifest.Assets))
+	seenAssetKeys := make(map[string]struct{}, len(manifest.Assets))
+	totalAssetBytes := 0
+	if len(manifest.Assets) > maxBundleAssets {
+		return loadedBundle{}, fmt.Errorf("manifest must not contain more than %d assets", maxBundleAssets)
 	}
-	if len(encoded) > maxRequestBytes {
-		return importSubjectRequest{}, nil, fmt.Errorf("encoded import request exceeds %d bytes", maxRequestBytes)
+	for _, input := range manifest.Assets {
+		key := strings.TrimSpace(input.Key)
+		if key == "" || utf8.RuneCountInString(key) > 160 {
+			return loadedBundle{}, fmt.Errorf("asset key is required and must not exceed 160 characters")
+		}
+		if _, exists := seenAssetKeys[key]; exists {
+			return loadedBundle{}, fmt.Errorf("duplicate asset key %q", key)
+		}
+		seenAssetKeys[key] = struct{}{}
+		content, filename, err := loader.readAssetFile(input.File)
+		if err != nil {
+			return loadedBundle{}, fmt.Errorf("asset %q: %w", key, err)
+		}
+		totalAssetBytes += len(content)
+		if totalAssetBytes > maxBundleAssetBytes {
+			return loadedBundle{}, fmt.Errorf("bundle assets exceed %d bytes", maxBundleAssetBytes)
+		}
+		assets = append(assets, localAsset{Key: key, Filename: filename, Content: content})
 	}
-	return request, encoded, nil
+	return loadedBundle{Version: manifest.Version, Request: request, Assets: assets}, nil
 }
 
 func (loader *manifestLoader) loadChapter(chapter chapterManifest) (importChapterRequest, error) {
@@ -185,6 +244,21 @@ func (loader *manifestLoader) readContentFile(path string) (string, error) {
 		return "", fmt.Errorf("content_file must not exceed %d characters", maxChapterContentRune)
 	}
 	return content, nil
+}
+
+func (loader *manifestLoader) readAssetFile(path string) ([]byte, string, error) {
+	if filepath.IsAbs(path) {
+		return nil, "", fmt.Errorf("asset file must be relative to the manifest")
+	}
+	cleanPath := filepath.Clean(path)
+	if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+		return nil, "", fmt.Errorf("asset file must stay inside the manifest directory")
+	}
+	body, err := readRegularFile(loader.root, cleanPath, assetstore.MaxAssetBytes)
+	if err != nil {
+		return nil, "", fmt.Errorf("asset file must stay inside the manifest directory and name a readable regular file: %w", err)
+	}
+	return body, filepath.Base(cleanPath), nil
 }
 
 func normalizeManifestTags(input []string) ([]string, error) {
