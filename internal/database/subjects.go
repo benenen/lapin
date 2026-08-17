@@ -65,6 +65,19 @@ func FindSubjectByID(ctx context.Context, db DBTX, id int64) (Subject, error) {
 	return subject, err
 }
 
+func UpdateSubjectForOwner(ctx context.Context, db DBTX, subjectID, ownerID int64, title, description string) (Subject, error) {
+	var subject Subject
+	err := db.QueryRow(ctx, `
+		UPDATE subjects
+		SET title = $3, description = $4, updated_at = NOW()
+		WHERE id = $1 AND owner_id = $2
+		RETURNING id, owner_id, external_id, title, description, created_at, updated_at
+	`, subjectID, ownerID, title, description).Scan(
+		&subject.ID, &subject.OwnerID, &subject.ExternalID, &subject.Title, &subject.Description, &subject.CreatedAt, &subject.UpdatedAt,
+	)
+	return subject, err
+}
+
 func IsSubjectOwner(ctx context.Context, db DBTX, subjectID, userID int64) (bool, error) {
 	var exists bool
 	err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM subjects WHERE id = $1 AND owner_id = $2)`, subjectID, userID).Scan(&exists)

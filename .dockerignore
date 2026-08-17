@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+.playwright-cli
+bin
+coverage.*
+*.out
+web/coverage
+web/dist
+web/node_modules
+web/public/excalidraw-assets

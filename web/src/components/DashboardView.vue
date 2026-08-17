@@ -2,7 +2,6 @@
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
-import Card from 'primevue/card'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
@@ -12,28 +11,33 @@ import Textarea from 'primevue/textarea'
 
 import { api } from '../api'
 import lapinLogo from '../assets/lapin-logo.svg'
-import type { AccessToken, Annotation, Chapter, Comment, Subject, User, Whiteboard, WhiteboardData } from '../types'
+import { buildChapterTree } from '../chapterTree'
+import type { AccessToken, Annotation, Comment, PersistedWhiteboardData, Subject, User, Whiteboard, WhiteboardData } from '../types'
+import ChapterTree from './ChapterTree.vue'
 import RichTextContent from './RichTextContent.vue'
 import RichTextEditor from './RichTextEditor.vue'
 
-const TldrawWhiteboard = defineAsyncComponent(() => import('./TldrawWhiteboard.vue'))
+const ExcalidrawWhiteboard = defineAsyncComponent(() => import('./ExcalidrawWhiteboard.vue'))
 
-const props = defineProps<{ user: User }>()
+const props = defineProps<{ user: User; subjectId: string }>()
 const emit = defineEmits<{ logout: [] }>()
 
-const subjects = ref<Subject[]>([])
 const selectedSubject = ref<Subject | null>(null)
 const activeChapterId = ref('')
-const activeTab = ref<'notes' | 'whiteboard' | 'comments'>('notes')
+const activeTab = ref<'notes' | 'comments'>('notes')
+const whiteboardVisible = ref(false)
 const loading = ref(true)
 const error = ref('')
 
-const createDialog = ref(false)
-const newSubject = ref({ title: '', description: '', tags: '', chapterTitle: '', chapterContent: '' })
-const createLoading = ref(false)
+const editSubjectDialog = ref(false)
+const editSubjectDraft = ref({ title: '', description: '' })
+const editSubjectLoading = ref(false)
 
 const chapterDialog = ref(false)
 const newChapter = ref<{ parent_id?: string; title: string; content: string }>({ title: '', content: '' })
+const editChapterDialog = ref(false)
+const editChapterDraft = ref({ title: '', content: '' })
+const editChapterLoading = ref(false)
 
 const tokenDialog = ref(false)
 const tokens = ref<AccessToken[]>([])
@@ -49,33 +53,16 @@ const comments = ref<Comment[]>([])
 const commentBody = ref('')
 
 const activeChapter = computed(() => selectedSubject.value?.chapters?.find((chapter) => chapter.id === activeChapterId.value) ?? null)
-const ownWhiteboard = computed<WhiteboardData | null>(() => whiteboards.value.find((board) => board.user_id === props.user.id)?.data ?? null)
+const ownWhiteboard = computed<PersistedWhiteboardData | null>(() => whiteboards.value.find((board) => board.user_id === props.user.id)?.data ?? null)
 const isOwner = computed(() => selectedSubject.value?.owner_id === props.user.id)
-const chapterRows = computed<Array<Chapter & { depth: number }>>(() => {
-  const chapters = selectedSubject.value?.chapters ?? []
-  const knownIDs = new Set(chapters.map((chapter) => chapter.id))
-  const children = new Map<string, Chapter[]>()
-  for (const chapter of chapters) {
-    const parent = chapter.parent_id && knownIDs.has(chapter.parent_id) ? chapter.parent_id : ''
-    children.set(parent, [...(children.get(parent) ?? []), chapter])
-  }
-  const rows: Array<Chapter & { depth: number }> = []
-  const stack = [...(children.get('') ?? [])].reverse().map((chapter) => ({ chapter, depth: 0 }))
-  while (stack.length > 0) {
-    const current = stack.pop()
-    if (!current) break
-    rows.push({ ...current.chapter, depth: current.depth })
-    const nested = children.get(current.chapter.id) ?? []
-    for (const child of [...nested].reverse()) {
-      stack.push({ chapter: child, depth: current.depth + 1 })
-    }
-  }
-  return rows
-})
+const chapterTreeNodes = computed(() => buildChapterTree(selectedSubject.value?.chapters ?? []))
 
-onMounted(loadSubjects)
+onMounted(() => void openSubject(props.subjectId))
+
+watch(() => props.subjectId, (id) => void openSubject(id))
 
 watch(activeChapterId, async (id) => {
+  whiteboardVisible.value = false
   annotations.value = []
   whiteboards.value = []
   comments.value = []
@@ -95,48 +82,42 @@ watch(activeChapterId, async (id) => {
   }
 })
 
-async function loadSubjects() {
+async function openSubject(id: string) {
   loading.value = true
   try {
-    subjects.value = await api.listSubjects()
-    if (subjects.value.length > 0 && !selectedSubject.value) {
-      await openSubject(subjects.value[0].id)
-    }
+    const subject = await api.getSubject(id)
+    if (props.subjectId !== id) return
+    selectedSubject.value = subject
+    activeChapterId.value = buildChapterTree(subject.chapters ?? [])[0]?.chapter.id ?? ''
   } catch (caught) {
+    selectedSubject.value = null
+    activeChapterId.value = ''
     showError(caught)
   } finally {
-    loading.value = false
+    if (props.subjectId === id) loading.value = false
   }
 }
 
-async function openSubject(id: string) {
-  try {
-    selectedSubject.value = await api.getSubject(id)
-    activeChapterId.value = selectedSubject.value.chapters?.[0]?.id ?? ''
-  } catch (caught) {
-    showError(caught)
+function openEditSubject() {
+  if (!selectedSubject.value || !isOwner.value) return
+  editSubjectDraft.value = {
+    title: selectedSubject.value.title,
+    description: selectedSubject.value.description,
   }
+  editSubjectDialog.value = true
 }
 
-async function createSubject() {
-  createLoading.value = true
+async function updateSubject() {
+  if (!selectedSubject.value || !isOwner.value) return
+  editSubjectLoading.value = true
   try {
-    const created = await api.createSubject({
-      title: newSubject.value.title,
-      description: newSubject.value.description,
-      tags: newSubject.value.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-      chapters: newSubject.value.chapterTitle.trim()
-        ? [{ title: newSubject.value.chapterTitle, content: newSubject.value.chapterContent }]
-        : [],
-    })
-    createDialog.value = false
-    newSubject.value = { title: '', description: '', tags: '', chapterTitle: '', chapterContent: '' }
-    await loadSubjects()
-    await openSubject(created.id)
+    const updated = await api.updateSubject(selectedSubject.value.id, { ...editSubjectDraft.value })
+    selectedSubject.value = updated
+    editSubjectDialog.value = false
   } catch (caught) {
     showError(caught)
   } finally {
-    createLoading.value = false
+    editSubjectLoading.value = false
   }
 }
 
@@ -147,9 +128,36 @@ async function createChapter() {
     chapterDialog.value = false
     newChapter.value = { title: '', content: '' }
     await openSubject(selectedSubject.value.id)
-    await loadSubjects()
   } catch (caught) {
     showError(caught)
+  }
+}
+
+function openEditChapter() {
+  if (!activeChapter.value || !isOwner.value) return
+  editChapterDraft.value = {
+    title: activeChapter.value.title,
+    content: activeChapter.value.content,
+  }
+  editChapterDialog.value = true
+}
+
+async function updateChapter() {
+  if (!activeChapter.value || !selectedSubject.value || !isOwner.value) return
+  editChapterLoading.value = true
+  try {
+    const updated = await api.updateChapter(activeChapter.value.id, { ...editChapterDraft.value })
+    selectedSubject.value = {
+      ...selectedSubject.value,
+      chapters: (selectedSubject.value.chapters ?? []).map((chapter) => (
+        chapter.id === updated.id ? updated : chapter
+      )),
+    }
+    editChapterDialog.value = false
+  } catch (caught) {
+    showError(caught)
+  } finally {
+    editChapterLoading.value = false
   }
 }
 
@@ -234,8 +242,9 @@ function showError(caught: unknown) {
 }
 
 function setActiveTab(tab: string) {
-  if (tab === 'notes' || tab === 'whiteboard' || tab === 'comments') {
+  if (tab === 'notes' || tab === 'comments') {
     activeTab.value = tab
+    if (tab === 'comments') whiteboardVisible.value = false
   }
 }
 </script>
@@ -243,7 +252,7 @@ function setActiveTab(tab: string) {
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <div class="wordmark"><img :src="lapinLogo" alt="Lapin" /></div>
+      <a class="wordmark" href="/" aria-label="返回科目首页"><img :src="lapinLogo" alt="Lapin" /></a>
       <div class="topbar-actions">
         <Button label="Access Token" icon="pi pi-key" severity="secondary" outlined @click="openTokens" />
         <div class="user-chip">
@@ -256,31 +265,7 @@ function setActiveTab(tab: string) {
 
     <Message v-if="error" class="global-message" severity="error" :closable="false">{{ error }}</Message>
 
-    <div class="workspace-grid">
-      <aside class="subject-sidebar">
-        <div class="sidebar-heading">
-          <div><span class="eyebrow">LIBRARY</span><h2>我的科目</h2></div>
-          <Button icon="pi pi-plus" aria-label="新建科目" rounded @click="createDialog = true" />
-        </div>
-        <div v-if="loading" class="muted">正在读取科目…</div>
-        <button
-          v-for="subject in subjects"
-          :key="subject.id"
-          type="button"
-          class="subject-item"
-          :class="{ active: selectedSubject?.id === subject.id }"
-          @click="openSubject(subject.id)"
-        >
-          <span class="subject-icon">{{ subject.title.slice(0, 1) }}</span>
-          <span><strong>{{ subject.title }}</strong><small>{{ subject.owner_name }} · {{ subject.tags.join(' / ') || '未分类' }}</small></span>
-        </button>
-        <div v-if="!loading && subjects.length === 0" class="empty-sidebar">
-          <i class="pi pi-book" />
-          <p>还没有科目</p>
-          <Button label="创建第一个科目" size="small" @click="createDialog = true" />
-        </div>
-      </aside>
-
+    <div class="workspace-grid detail-only">
       <section v-if="selectedSubject" class="subject-main">
         <header class="subject-header">
           <div>
@@ -288,30 +273,26 @@ function setActiveTab(tab: string) {
             <h1>{{ selectedSubject.title }}</h1>
             <p>{{ selectedSubject.description || '这个科目还没有简介。' }}</p>
           </div>
-          <Button v-if="isOwner" label="添加章节" icon="pi pi-plus" severity="secondary" outlined @click="chapterDialog = true" />
+          <div v-if="isOwner" class="owner-actions">
+            <Button label="编辑科目" icon="pi pi-pencil" severity="secondary" outlined @click="openEditSubject" />
+            <Button label="添加章节" icon="pi pi-plus" severity="secondary" outlined @click="chapterDialog = true" />
+          </div>
         </header>
 
         <div class="study-layout">
           <nav class="chapter-nav" aria-label="章节">
             <span class="eyebrow">CHAPTERS</span>
-            <button
-              v-for="chapter in chapterRows"
-              :key="chapter.id"
-              type="button"
-              :class="{ active: chapter.id === activeChapterId }"
-              :style="{ paddingLeft: `${0.65 + chapter.depth * 1.05}rem` }"
-              @click="activeChapterId = chapter.id"
-            >
-              <span>{{ String(chapter.position + 1).padStart(2, '0') }}</span>{{ chapter.title }}
-            </button>
+            <ChapterTree :nodes="chapterTreeNodes" :active-chapter-id="activeChapterId" @select="activeChapterId = $event" />
           </nav>
 
           <article v-if="activeChapter" class="study-area">
-            <div class="chapter-title"><span>第 {{ activeChapter.position + 1 }} 章</span><h2>{{ activeChapter.title }}</h2></div>
+            <div class="chapter-heading">
+              <div class="chapter-title"><span>第 {{ activeChapter.position + 1 }} 章</span><h2>{{ activeChapter.title }}</h2></div>
+              <Button v-if="isOwner" label="编辑章节" icon="pi pi-pencil" severity="secondary" text @click="openEditChapter" />
+            </div>
             <div class="study-tabs" role="tablist">
               <button v-for="tab in [
                 { key: 'notes', label: '正文与标注', icon: 'pi-bookmark' },
-                { key: 'whiteboard', label: '白板', icon: 'pi-pencil' },
                 { key: 'comments', label: `讨论 ${comments.length}`, icon: 'pi-comments' },
               ]" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" @click="setActiveTab(tab.key)">
                 <i class="pi" :class="tab.icon" /> {{ tab.label }}
@@ -319,16 +300,35 @@ function setActiveTab(tab: string) {
             </div>
 
             <section v-if="activeTab === 'notes'" class="notes-grid">
-              <div>
-                <p v-if="!activeChapter.content" class="chapter-content">本章暂无正文。</p>
-                <RichTextContent v-else :content="activeChapter.content" @selection="captureSelection" />
-                <p class="selection-tip"><i class="pi pi-info-circle" /> 选中正文即可定位标注位置</p>
+              <div class="chapter-document">
+                <div class="chapter-document-actions">
+                  <Button
+                    :label="whiteboardVisible ? '隐藏白板' : '显示白板'"
+                    :icon="whiteboardVisible ? 'pi pi-eye-slash' : 'pi pi-eye'"
+                    severity="secondary"
+                    outlined
+                    size="small"
+                    @click="whiteboardVisible = !whiteboardVisible"
+                  />
+                </div>
+                <template v-if="whiteboardVisible">
+                  <ExcalidrawWhiteboard
+                    :chapter-id="activeChapter.id"
+                    :content="activeChapter.content"
+                    :model-value="ownWhiteboard"
+                    :saving="whiteboardSaving"
+                    @save="saveWhiteboard"
+                  />
+                </template>
+                <template v-else>
+                  <p v-if="!activeChapter.content" class="chapter-content">本章暂无正文。</p>
+                  <RichTextContent v-else :content="activeChapter.content" @selection="captureSelection" />
+                </template>
               </div>
-              <aside class="annotation-panel">
-                <h3>新建标注</h3>
-                <blockquote v-if="annotation.quote">“{{ annotation.quote }}”</blockquote>
-                <span v-else class="muted">先在左侧正文中选中一段文字，也可以直接写章节笔记。</span>
-                <Textarea v-model="annotation.note" rows="4" maxlength="2000" placeholder="写下你的理解…" fluid />
+                <aside class="annotation-panel">
+                  <h3>新建标注</h3>
+                  <blockquote v-if="annotation.quote">“{{ annotation.quote }}”</blockquote>
+                  <RichTextEditor v-model="annotation.note" class="compact-rich-text-editor" />
                 <div class="annotation-actions">
                   <div class="annotation-colors">
                     <button v-for="color in ['yellow', 'green', 'blue', 'pink']" :key="color" type="button" :class="[color, { active: annotation.color === color }]" @click="annotation.color = color" />
@@ -339,36 +339,22 @@ function setActiveTab(tab: string) {
                   <div v-for="item in annotations" :key="item.id" class="annotation-card" :class="item.color">
                     <small>{{ item.author_name }} · {{ new Date(item.created_at).toLocaleString() }}</small>
                     <q v-if="item.quote">{{ item.quote }}</q>
-                    <p>{{ item.note }}</p>
+                    <RichTextContent :content="item.note" />
                   </div>
                 </div>
               </aside>
             </section>
 
-            <section v-else-if="activeTab === 'whiteboard'">
-              <div class="collaborator-line">
-                <span>我的白板</span>
-                <small>白板内容仅你自己可见</small>
-              </div>
-              <TldrawWhiteboard
-                :chapter-id="activeChapter.id"
-                :content="activeChapter.content"
-                :model-value="ownWhiteboard"
-                :saving="whiteboardSaving"
-                @save="saveWhiteboard"
-              />
-            </section>
-
             <section v-else class="comments-panel">
               <div class="comment-compose">
                 <Avatar :label="user.name.slice(0, 1)" shape="circle" />
-                <Textarea v-model="commentBody" rows="3" maxlength="2000" placeholder="分享问题或想法…" fluid />
+                <RichTextEditor v-model="commentBody" class="compact-rich-text-editor" />
                 <Button label="发送" icon="pi pi-send" :disabled="!commentBody.trim()" @click="postComment" />
               </div>
               <div v-if="comments.length === 0" class="empty-comments">还没有讨论，来提出第一个问题吧。</div>
               <div v-for="comment in comments" :key="comment.id" class="comment-item">
                 <Avatar :label="comment.author_name.slice(0, 1)" shape="circle" />
-                <div><strong>{{ comment.author_name }}</strong><small>{{ new Date(comment.created_at).toLocaleString() }}</small><p>{{ comment.body }}</p></div>
+                <div><strong>{{ comment.author_name }}</strong><small>{{ new Date(comment.created_at).toLocaleString() }}</small><RichTextContent :content="comment.body" /></div>
               </div>
             </section>
           </article>
@@ -376,20 +362,20 @@ function setActiveTab(tab: string) {
         </div>
       </section>
 
-      <section v-else class="welcome-empty">
-        <div><span class="eyebrow">READY WHEN YOU ARE</span><h1>从一门科目开始</h1><p>创建科目，或者生成 Access Token 后通过 OpenAPI 导入。</p></div>
+      <section v-else class="welcome-empty detail-empty">
+        <div v-if="loading"><span class="eyebrow">LOADING</span><h1>正在读取科目</h1><p>请稍候，学习内容马上就好。</p></div>
+        <div v-else><span class="eyebrow">NOT FOUND</span><h1>无法打开这个科目</h1><p>科目可能不存在，或者你没有查看权限。</p><a class="text-link" href="/">返回科目首页</a></div>
       </section>
     </div>
 
-    <Dialog v-model:visible="createDialog" modal header="新建科目" :style="{ width: 'min(36rem, 94vw)' }">
-      <form class="dialog-form" @submit.prevent="createSubject">
-        <label><span>科目名称</span><InputText v-model="newSubject.title" required maxlength="200" fluid /></label>
-        <label><span>简介</span><Textarea v-model="newSubject.description" rows="3" maxlength="4000" fluid /></label>
-        <label><span>标签（英文逗号分隔）</span><InputText v-model="newSubject.tags" placeholder="Go, 数据库, 后端" fluid /></label>
-        <div class="dialog-section">第一章（可选）</div>
-        <label><span>章节标题</span><InputText v-model="newSubject.chapterTitle" maxlength="200" fluid /></label>
-        <label><span>章节正文（Markdown 存储）</span><RichTextEditor v-model="newSubject.chapterContent" /></label>
-        <Button type="submit" label="创建科目" :loading="createLoading" />
+    <Dialog v-model:visible="editSubjectDialog" modal header="编辑科目" :style="{ width: 'min(36rem, 94vw)' }">
+      <form class="dialog-form" @submit.prevent="updateSubject">
+        <Message v-if="selectedSubject?.external_id" severity="warn" :closable="false">
+          这个科目来自 OpenAPI，再次通过 OpenAPI 导入时可能被覆盖。
+        </Message>
+        <label><span>科目名称</span><InputText v-model="editSubjectDraft.title" required maxlength="200" fluid /></label>
+        <label><span>简介</span><Textarea v-model="editSubjectDraft.description" rows="3" maxlength="4000" fluid /></label>
+        <Button type="submit" label="保存修改" :loading="editSubjectLoading" />
       </form>
     </Dialog>
 
@@ -399,7 +385,7 @@ function setActiveTab(tab: string) {
           <span>父章节（可选）</span>
           <Select
             v-model="newChapter.parent_id"
-            :options="chapterRows"
+            :options="selectedSubject?.chapters ?? []"
             option-label="title"
             option-value="id"
             placeholder="作为顶层章节"
@@ -410,6 +396,18 @@ function setActiveTab(tab: string) {
         <label><span>章节标题</span><InputText v-model="newChapter.title" required maxlength="200" fluid /></label>
         <label><span>正文（Markdown 存储）</span><RichTextEditor v-model="newChapter.content" /></label>
         <Button type="submit" label="保存章节" />
+      </form>
+    </Dialog>
+
+    <Dialog v-model:visible="editChapterDialog" modal header="编辑章节" :style="{ width: 'min(44rem, 94vw)' }">
+      <form class="dialog-form" @submit.prevent="updateChapter">
+        <Message severity="warn" :closable="false">
+          正文位置变化可能使既有标注和白板提示需要重新校对；章节 ID 和现有数据会保留。
+          <span v-if="activeChapter?.external_id">再次通过 OpenAPI 导入时，本章修改也可能被覆盖。</span>
+        </Message>
+        <label><span>章节标题</span><InputText v-model="editChapterDraft.title" required maxlength="200" fluid /></label>
+        <label><span>正文（Markdown 存储）</span><RichTextEditor v-model="editChapterDraft.content" /></label>
+        <Button type="submit" label="保存修改" :loading="editChapterLoading" />
       </form>
     </Dialog>
 

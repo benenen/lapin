@@ -67,6 +67,22 @@ func FindChapterByID(ctx context.Context, db DBTX, chapterID int64) (Chapter, er
 	return chapter, err
 }
 
+func UpdateChapterForOwner(ctx context.Context, db DBTX, chapterID, ownerID int64, title, content string) (Chapter, error) {
+	var chapter Chapter
+	err := db.QueryRow(ctx, `
+		UPDATE chapters AS chapter
+		SET title = $3, content = $4
+		FROM subjects AS subject
+		WHERE chapter.id = $1 AND chapter.subject_id = subject.id AND subject.owner_id = $2
+		RETURNING chapter.id, chapter.subject_id, chapter.parent_id, chapter.external_id,
+		          chapter.position, chapter.title, chapter.content, chapter.created_at
+	`, chapterID, ownerID, title, content).Scan(
+		&chapter.ID, &chapter.SubjectID, &chapter.ParentID, &chapter.ExternalID,
+		&chapter.Position, &chapter.Title, &chapter.Content, &chapter.CreatedAt,
+	)
+	return chapter, err
+}
+
 func ChapterExists(ctx context.Context, db DBTX, chapterID int64) (bool, error) {
 	var exists bool
 	err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id = $1)`, chapterID).Scan(&exists)

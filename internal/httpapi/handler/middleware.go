@@ -30,7 +30,7 @@ func (h *Handler) SecurityHeaders() app.HandlerFunc {
 		c.Response.Header.Set("X-Content-Type-Options", "nosniff")
 		c.Response.Header.Set("X-Frame-Options", "DENY")
 		c.Response.Header.Set("Referrer-Policy", "no-referrer")
-		c.Response.Header.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'")
+		c.Response.Header.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; font-src 'self' data: https://esm.sh; frame-ancestors 'none'")
 		c.Next(ctx)
 	}
 }

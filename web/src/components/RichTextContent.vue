@@ -50,5 +50,5 @@ function emitSelection(current: Editor) {
 </script>
 
 <template>
-  <EditorContent class="chapter-content" :editor="editor" />
+  <EditorContent class="chapter-content autosize-rich-text" :editor="editor" />
 </template>

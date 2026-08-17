@@ -1,0 +1,23 @@
+root = "."
+tmp_dir = "bin/air"
+
+[build]
+cmd = "go build -o ./bin/air/lapin ./cmd/lapin"
+entrypoint = ["./bin/air/lapin"]
+include_ext = ["go", "sql"]
+exclude_dir = [".git", "bin", "web/node_modules", "web/dist", "web/coverage"]
+exclude_regex = ["_test\\.go"]
+delay = 300
+stop_on_error = true
+send_interrupt = true
+kill_delay = 500000000
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = true
+
+[screen]
+clear_on_rebuild = false
+keep_scroll = true

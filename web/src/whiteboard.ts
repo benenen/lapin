@@ -1,7 +1,12 @@
-import type { WhiteboardData } from './types'
+import type { LegacyTldrawWhiteboardData, WhiteboardData } from './types'
 
 export const WHITEBOARD_WIDTH = 960
 export const WHITEBOARD_MIN_HEIGHT = 640
+const SUPPORTED_EXCALIDRAW_ELEMENTS = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text'])
+
+export function isSupportedExcalidrawElement(type: string): boolean {
+  return SUPPORTED_EXCALIDRAW_ELEMENTS.has(type)
+}
 
 export async function chapterContentRevision(content: string): Promise<string> {
   const bytes = new TextEncoder().encode(content)
@@ -9,19 +14,40 @@ export async function chapterContentRevision(content: string): Promise<string> {
   return `sha256:${Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')}`
 }
 
-export function isCompatibleWhiteboard(data: WhiteboardData | null | undefined, chapterID: string): data is WhiteboardData {
-  return data?.version === 2
-    && data.anchor.type === 'chapter'
+export function isCompatibleWhiteboard(data: unknown, chapterID: string): data is WhiteboardData {
+  if (!isRecord(data) || data.version !== 3 || !isRecord(data.anchor) || !isRecord(data.space) || !isRecord(data.document)) {
+    return false
+  }
+  return data.anchor.type === 'chapter'
     && data.anchor.id === chapterID
+    && typeof data.anchor.content_revision === 'string'
     && data.space.fit === 'contain'
+    && typeof data.space.width === 'number'
     && data.space.width >= 100
+    && typeof data.space.height === 'number'
     && data.space.height >= 100
-    && typeof data.document === 'object'
-    && data.document !== null
-    && typeof data.document.store === 'object'
-    && data.document.store !== null
-    && typeof data.document.schema === 'object'
-    && data.document.schema !== null
+    && data.document.type === 'excalidraw'
+    && data.document.version === 2
+    && Array.isArray(data.document.elements)
+    && isRecord(data.document.appState)
+    && isRecord(data.document.files)
+}
+
+export function isLegacyTldrawWhiteboard(data: unknown): data is LegacyTldrawWhiteboardData {
+  return isRecord(data)
+    && data.version === 2
+    && isRecord(data.anchor)
+    && data.anchor.type === 'chapter'
+    && typeof data.anchor.id === 'string'
+    && isRecord(data.space)
+    && data.space.fit === 'contain'
+    && isRecord(data.document)
+    && isRecord(data.document.store)
+    && isRecord(data.document.schema)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export function viewportScale(viewportWidth: number, referenceWidth = WHITEBOARD_WIDTH): number {
@@ -29,4 +55,13 @@ export function viewportScale(viewportWidth: number, referenceWidth = WHITEBOARD
     return 1
   }
   return Math.min(1, viewportWidth / referenceWidth)
+}
+
+export function excalidrawViewport(viewportWidth: number, referenceWidth = WHITEBOARD_WIDTH, topInset = 0) {
+  const zoom = viewportScale(viewportWidth, referenceWidth)
+  return {
+    zoom,
+    scrollX: 0,
+    scrollY: topInset / zoom,
+  }
 }

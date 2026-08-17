@@ -3,15 +3,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 
-import type { WhiteboardData } from '../types'
-import { mountTldraw, type TldrawBridge, type WhiteboardTool } from '../tldrawBridge'
-import { chapterContentRevision, isCompatibleWhiteboard, viewportScale, WHITEBOARD_MIN_HEIGHT, WHITEBOARD_WIDTH } from '../whiteboard'
+import type { PersistedWhiteboardData, WhiteboardData } from '../types'
+import { mountExcalidraw, type ExcalidrawBridge } from '../excalidrawBridge'
+import { chapterContentRevision, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, viewportScale, WHITEBOARD_MIN_HEIGHT, WHITEBOARD_WIDTH } from '../whiteboard'
 import RichTextContent from './RichTextContent.vue'
 
 const props = defineProps<{
   chapterId: string
   content: string
-  modelValue?: WhiteboardData | null
+  modelValue?: PersistedWhiteboardData | null
   saving?: boolean
 }>()
 
@@ -25,15 +25,16 @@ const editorHost = ref<HTMLElement | null>(null)
 const ready = ref(false)
 const error = ref('')
 const revision = ref('')
-const activeTool = ref<WhiteboardTool>('draw')
 const referenceWidth = ref(WHITEBOARD_WIDTH)
 const referenceHeight = ref(WHITEBOARD_MIN_HEIGHT)
 const scale = ref(1)
-let bridge: TldrawBridge | null = null
+const legacyResetAllowed = ref(false)
+let bridge: ExcalidrawBridge | null = null
 let resizeObserver: ResizeObserver | null = null
 let rebuildGeneration = 0
 
 const compatibleData = computed(() => isCompatibleWhiteboard(props.modelValue, props.chapterId) ? props.modelValue : null)
+const legacyBlocked = computed(() => isLegacyTldrawWhiteboard(props.modelValue) && !legacyResetAllowed.value)
 const stageStyle = computed(() => ({
   width: `${referenceWidth.value * scale.value}px`,
   height: `${referenceHeight.value * scale.value}px`,
@@ -57,7 +58,9 @@ onBeforeUnmount(() => {
   bridge?.destroy()
 })
 
+watch(() => props.chapterId, () => { legacyResetAllowed.value = false })
 watch(() => [props.chapterId, props.content, props.modelValue] as const, () => void rebuild(), { deep: true })
+watch(() => props.saving, (saving) => bridge?.setSaving(Boolean(saving)))
 
 function syncScale() {
   scale.value = viewportScale(viewport.value?.clientWidth ?? referenceWidth.value, referenceWidth.value)
@@ -69,6 +72,7 @@ async function rebuild() {
   const chapterId = props.chapterId
   const content = props.content
   const saved = isCompatibleWhiteboard(props.modelValue, chapterId) ? props.modelValue : null
+  const legacy = isLegacyTldrawWhiteboard(props.modelValue) ? props.modelValue : null
   bridge?.destroy()
   bridge = null
   ready.value = false
@@ -76,49 +80,43 @@ async function rebuild() {
   const nextRevision = await chapterContentRevision(content)
   if (generation !== rebuildGeneration) return
   revision.value = nextRevision
-  referenceWidth.value = saved?.space.width ?? WHITEBOARD_WIDTH
-  referenceHeight.value = saved?.space.height ?? WHITEBOARD_MIN_HEIGHT
+  referenceWidth.value = saved?.space.width ?? legacy?.space.width ?? WHITEBOARD_WIDTH
+  referenceHeight.value = saved?.space.height ?? legacy?.space.height ?? WHITEBOARD_MIN_HEIGHT
   await nextTick()
   if (generation !== rebuildGeneration) return
-  if (!saved && contentLayer.value) {
+  if (!saved && !legacy && contentLayer.value) {
     referenceHeight.value = Math.max(WHITEBOARD_MIN_HEIGHT, contentLayer.value.scrollHeight + 80)
     await nextTick()
     if (generation !== rebuildGeneration) return
   }
   syncScale()
+  if (legacy && !legacyResetAllowed.value) return
   if (!editorHost.value) return
-  bridge = mountTldraw(editorHost.value, {
+  bridge = mountExcalidraw(editorHost.value, {
     data: saved,
     width: referenceWidth.value,
     height: referenceHeight.value,
-    onReady: () => { if (generation === rebuildGeneration) ready.value = true },
-    onError: (caught) => { if (generation === rebuildGeneration) error.value = caught.message },
+    topInset: 0,
+    onSave: save,
+    onReady: () => {
+      if (generation !== rebuildGeneration) return
+      ready.value = true
+      bridge?.setSaving(Boolean(props.saving))
+    },
+    onError: (caught: Error) => { if (generation === rebuildGeneration) error.value = caught.message },
   })
-  activeTool.value = 'draw'
 }
 
-function chooseTool(tool: WhiteboardTool) {
-  activeTool.value = tool
-  bridge?.setTool(tool)
-}
-
-function undo() {
-  bridge?.undo()
-}
-
-function redo() {
-  bridge?.redo()
-}
-
-function clear() {
-  bridge?.clear()
+function startExcalidraw() {
+  legacyResetAllowed.value = true
+  void rebuild()
 }
 
 async function save() {
   if (!bridge?.isReady()) return
   try {
     emit('save', {
-      version: 2,
+      version: 3,
       anchor: { type: 'chapter', id: props.chapterId, content_revision: revision.value },
       space: { width: referenceWidth.value, height: referenceHeight.value, fit: 'contain' },
       document: bridge.getDocument(),
@@ -130,20 +128,11 @@ async function save() {
 </script>
 
 <template>
-  <section class="whiteboard-panel anchored-whiteboard" data-testid="anchored-whiteboard">
-    <div class="whiteboard-toolbar">
-      <div class="toolbar-actions" role="toolbar" aria-label="白板工具">
-        <Button label="选择" icon="pi pi-arrows-alt" size="small" :outlined="activeTool !== 'select'" @click="chooseTool('select')" />
-        <Button label="画笔" icon="pi pi-pencil" size="small" :outlined="activeTool !== 'draw'" @click="chooseTool('draw')" />
-        <Button label="橡皮" icon="pi pi-eraser" size="small" :outlined="activeTool !== 'eraser'" @click="chooseTool('eraser')" />
-      </div>
-      <div class="toolbar-actions">
-        <Button icon="pi pi-undo" aria-label="撤销" severity="secondary" text @click="undo" />
-        <Button icon="pi pi-refresh" aria-label="重做" severity="secondary" text @click="redo" />
-        <Button label="清空" icon="pi pi-trash" severity="secondary" text @click="clear" />
-        <Button label="保存白板" icon="pi pi-save" :loading="saving" :disabled="!ready" @click="save" />
-      </div>
-    </div>
+  <section class="anchored-whiteboard" data-testid="anchored-whiteboard">
+    <Message v-if="legacyBlocked" severity="warn" :closable="false">
+      <span>检测到旧版 tldraw 白板。两种格式无法安全自动转换；旧数据会继续保留，只有新白板保存后才会替换。</span>
+      <Button label="使用 Excalidraw 新建" size="small" severity="secondary" @click="startExcalidraw" />
+    </Message>
     <Message v-if="revisionChanged" severity="warn" :closable="false">章节正文已经变化，原白板仍按保存时版式显示，请确认位置后再保存。</Message>
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <div ref="viewport" class="whiteboard-viewport">
@@ -152,7 +141,7 @@ async function save() {
           <RichTextContent v-if="content" :content="content" />
           <p v-else class="chapter-content">本章暂无正文，可以直接在空白区域勾画。</p>
         </div>
-        <div ref="editorHost" class="tldraw-host" aria-label="章节透明白板" />
+        <div ref="editorHost" class="excalidraw-host" aria-label="章节透明白板" />
       </div>
     </div>
   </section>

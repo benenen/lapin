@@ -10,13 +10,14 @@ Lapin is a Go and Vue 3 learning platform. Keep changes MVP-sized and preserve t
 - `migrations`: ordered SQL migrations embedded by `migrations/migrations.go`.
 - `web`: Vue 3, TypeScript and PrimeVue application embedded by `web/web.go` after `npm run build`.
 - Chapter bodies are stored as Markdown. Tiptap converts between Markdown and editor state in the browser; Go stores the string unchanged.
-- Whiteboards use tldraw in a transparent overlay. Persist the anchored document contract, never viewport or camera state.
+- Whiteboards use Excalidraw in a transparent React island. Persist the anchored document contract, never viewport or camera state.
 
 ## Data and API conventions
 
 - Database primary keys are identity `BIGINT` values. HTTP and Web clients only receive HashID strings.
 - Chapters form a tree through `parent_id`.
 - Session-authenticated writes require the CSRF header. OpenAPI imports require a bearer access token.
+- HTTP routes may use only `GET` and `POST`. Model updates and revocations as explicit `POST` action paths; never add `PUT`, `PATCH`, or `DELETE` routes.
 - Use the existing JSON response envelope and validate all input at the handler boundary.
 - Preserve user-owned work and interaction records during repeated OpenAPI imports.
 

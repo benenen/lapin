@@ -140,7 +140,7 @@ func TestUserCanImportAndStudySubject(t *testing.T) {
 	}
 
 	whiteboardDocument := validWhiteboardJSON(chapterID)
-	response = performJSON(h, "PUT", "/api/v1/chapters/"+chapterID+"/whiteboard", whiteboardDocument,
+	response = performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", whiteboardDocument,
 		ut.Header{Key: "Cookie", Value: cookies},
 		ut.Header{Key: "X-CSRF-Token", Value: payload.Data.CSRFToken},
 	)
@@ -159,7 +159,8 @@ func TestUserCanImportAndStudySubject(t *testing.T) {
 					Height float64 `json:"height"`
 				} `json:"space"`
 				Document struct {
-					Store map[string]json.RawMessage `json:"store"`
+					Type     string            `json:"type"`
+					Elements []json.RawMessage `json:"elements"`
 				} `json:"document"`
 			} `json:"data"`
 		} `json:"data"`
@@ -167,7 +168,7 @@ func TestUserCanImportAndStudySubject(t *testing.T) {
 	if err := json.Unmarshal(response.Body(), &savedWhiteboard); err != nil {
 		t.Fatal(err)
 	}
-	if savedWhiteboard.Data.Data.Version != 2 || savedWhiteboard.Data.Data.Anchor.ID != chapterID || savedWhiteboard.Data.Data.Space.Width != 960 || savedWhiteboard.Data.Data.Space.Height != 640 || savedWhiteboard.Data.Data.Document.Store == nil {
+	if savedWhiteboard.Data.Data.Version != 3 || savedWhiteboard.Data.Data.Anchor.ID != chapterID || savedWhiteboard.Data.Data.Space.Width != 960 || savedWhiteboard.Data.Data.Space.Height != 640 || savedWhiteboard.Data.Data.Document.Type != "excalidraw" || len(savedWhiteboard.Data.Data.Document.Elements) != 3 {
 		t.Fatalf("whiteboard contract was not preserved: %s", response.Body())
 	}
 	bobResponse := performJSON(h, "POST", "/api/v1/auth/register", `{"email":"bob@example.com","name":"Bob","password":"correct horse battery staple"}`)
@@ -287,7 +288,7 @@ func TestUserCanImportAndStudySubject(t *testing.T) {
 	if manualSubject.Data.Chapters[0].Content != "## 总览\n\n公式 $E = mc^2$" {
 		t.Fatalf("Markdown content was changed by backend: %q", manualSubject.Data.Chapters[0].Content)
 	}
-	response = performJSON(h, "PUT", "/api/v1/subjects/"+manualSubject.Data.ID+"/tags", `{"tags":["Go","树结构"]}`,
+	response = performJSON(h, "POST", "/api/v1/subjects/"+manualSubject.Data.ID+"/tags", `{"tags":["Go","树结构"]}`,
 		ut.Header{Key: "Cookie", Value: cookies},
 		ut.Header{Key: "X-CSRF-Token", Value: payload.Data.CSRFToken},
 	)
@@ -304,7 +305,7 @@ func TestUserCanImportAndStudySubject(t *testing.T) {
 		t.Fatalf("create child chapter status = %d, body = %s", response.StatusCode(), response.Body())
 	}
 
-	response = performJSON(h, "DELETE", "/api/v1/access-tokens/"+tokenPayload.Data.Token.ID, `{}`,
+	response = performJSON(h, "POST", "/api/v1/access-tokens/"+tokenPayload.Data.Token.ID+"/revoke", `{}`,
 		ut.Header{Key: "Cookie", Value: cookies},
 		ut.Header{Key: "X-CSRF-Token", Value: payload.Data.CSRFToken},
 	)
@@ -401,7 +402,7 @@ func TestAPIRejectsInvalidAndUnauthorizedRequests(t *testing.T) {
 	bobCookies, bobCSRF := authState(t, bobResponse)
 	assertStatus(t, performJSON(h, "POST", "/api/v1/subjects/"+subjectID+"/chapters", `{"title":"Forbidden","content":""}`,
 		ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 404)
-	assertStatus(t, performJSON(h, "PUT", "/api/v1/subjects/"+subjectID+"/tags", `{"tags":[""]}`,
+	assertStatus(t, performJSON(h, "POST", "/api/v1/subjects/"+subjectID+"/tags", `{"tags":[""]}`,
 		ut.Header{Key: "Cookie", Value: aliceCookies}, ut.Header{Key: "X-CSRF-Token", Value: aliceCSRF}), 400)
 	missingID := testIDCodec(t).Encode(999999)
 	assertStatus(t, performJSON(h, "POST", "/api/v1/subjects/"+subjectID+"/chapters", `{"parent_id":"`+missingID+`","title":"Bad parent","content":""}`,
@@ -414,21 +415,26 @@ func TestAPIRejectsInvalidAndUnauthorizedRequests(t *testing.T) {
 		ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 400)
 	assertStatus(t, performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/annotations", `{"start_offset":100000,"end_offset":100001,"quote":"x","note":"bad range","color":"yellow"}`,
 		ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 400)
-	assertStatus(t, performJSON(h, "PUT", "/api/v1/chapters/"+chapterID+"/whiteboard", `{"data":"not an object"}`,
+	assertStatus(t, performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", `{"data":"not an object"}`,
 		ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 400)
-	assertStatus(t, performJSON(h, "PUT", "/api/v1/chapters/"+chapterID+"/whiteboard", `{"data":{"strokes":"bad"}}`,
+	assertStatus(t, performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", `{"data":{"strokes":"bad"}}`,
 		ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 400)
-	assertStatus(t, performJSON(h, "PUT", "/api/v1/chapters/"+chapterID+"/whiteboard", `{"data":{"version":2,"anchor":{"type":"chapter","id":"wrong","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"store":{},"schema":{}}}}`,
+	assertStatus(t, performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", `{"data":{"version":3,"anchor":{"type":"chapter","id":"wrong","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}}}`,
 		ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 400)
 	invalidWhiteboards := []string{
-		`{"data":{"version":2,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":""},"space":{"width":960,"height":640,"fit":"contain"},"document":{"store":{},"schema":{}}}}`,
-		`{"data":{"version":2,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":99,"height":640,"fit":"contain"},"document":{"store":{},"schema":{}}}}`,
-		`{"data":{"version":2,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"store":{},"schema":{"schemaVersion":2,"sequences":{"com.tldraw.store":5,"com.tldraw.document":2,"com.tldraw.page":1}}}}}`,
-		`{"data":{"version":2,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"store":{},"schema":null}}}`,
-		`{"data":{"version":2,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"store":{"shape:bad":null},"schema":{"schemaVersion":2,"sequences":{"com.tldraw.store":5,"com.tldraw.document":2,"com.tldraw.page":1}}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":""},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":99,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"other","version":2,"elements":[],"appState":{},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":null,"appState":{},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[null],"appState":{},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{"image":{}}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[{"id":"shape-1","type":"image"}],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[{"id":"duplicate","type":"freedraw"},{"id":"duplicate","type":"freedraw"}],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[{"id":"incomplete","type":"rectangle"}],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[{"id":"extreme","type":"rectangle","x":1e100,"y":0,"width":10,"height":10,"angle":0,"seed":1,"version":1,"versionNonce":1,"updated":1,"opacity":100,"strokeWidth":1,"roughness":1,"isDeleted":false,"locked":false}],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`,
 	}
 	for _, body := range invalidWhiteboards {
-		assertStatus(t, performJSON(h, "PUT", "/api/v1/chapters/"+chapterID+"/whiteboard", body,
+		assertStatus(t, performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", body,
 			ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 400)
 	}
 	assertStatus(t, performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/comments", `{"body":"   "}`,
@@ -441,16 +447,16 @@ func TestAPIRejectsInvalidAndUnauthorizedRequests(t *testing.T) {
 		{method: "GET", path: "/api/v1/chapters/not-a-hashid/annotations", body: `{}`},
 		{method: "POST", path: "/api/v1/chapters/not-a-hashid/annotations", body: `{"note":"x"}`},
 		{method: "GET", path: "/api/v1/chapters/not-a-hashid/whiteboards", body: `{}`},
-		{method: "PUT", path: "/api/v1/chapters/not-a-hashid/whiteboard", body: `{"data":{}}`},
+		{method: "POST", path: "/api/v1/chapters/not-a-hashid/whiteboard", body: `{"data":{}}`},
 		{method: "GET", path: "/api/v1/chapters/not-a-hashid/comments", body: `{}`},
 		{method: "POST", path: "/api/v1/chapters/not-a-hashid/comments", body: `{"body":"x"}`},
 	} {
 		assertStatus(t, performJSON(h, endpoint.method, endpoint.path, endpoint.body,
 			ut.Header{Key: "Cookie", Value: bobCookies}, ut.Header{Key: "X-CSRF-Token", Value: bobCSRF}), 404)
 	}
-	assertStatus(t, performJSON(h, "DELETE", "/api/v1/access-tokens/not-a-hashid", `{}`,
+	assertStatus(t, performJSON(h, "POST", "/api/v1/access-tokens/not-a-hashid/revoke", `{}`,
 		ut.Header{Key: "Cookie", Value: aliceCookies}, ut.Header{Key: "X-CSRF-Token", Value: aliceCSRF}), 400)
-	assertStatus(t, performJSON(h, "DELETE", "/api/v1/access-tokens/"+missingID, `{}`,
+	assertStatus(t, performJSON(h, "POST", "/api/v1/access-tokens/"+missingID+"/revoke", `{}`,
 		ut.Header{Key: "Cookie", Value: aliceCookies}, ut.Header{Key: "X-CSRF-Token", Value: aliceCSRF}), 404)
 	assertStatus(t, performJSON(h, "POST", "/openapi/v1/subjects/import", `{"external_id":"","title":"Bad"}`, ut.Header{Key: "Authorization", Value: "bad"}), 401)
 }
@@ -622,12 +628,24 @@ func TestDatabaseTableLayoutAndConfigurationAccess(t *testing.T) {
 	}
 }
 
+func TestHTTPRoutesUseOnlyGetAndPost(t *testing.T) {
+	h := newTestApp(t)
+	for _, route := range h.Engine.Routes() {
+		if route.Method != "GET" && route.Method != "POST" {
+			t.Fatalf("route %s %s violates the GET/POST-only API convention", route.Method, route.Path)
+		}
+	}
+}
+
 func TestEmbeddedWebAndSPAFallback(t *testing.T) {
 	h := newTestApp(t)
 	root := performJSON(h, "GET", "/", `{}`)
 	assertStatus(t, root, 200)
 	if policy := string(root.Header.Peek("Content-Security-Policy")); !strings.Contains(policy, "img-src 'self' data: blob: https:") {
-		t.Fatalf("CSP must allow tldraw's generated blob images: %q", policy)
+		t.Fatalf("CSP must allow whiteboard-generated blob images: %q", policy)
+	}
+	if policy := string(root.Header.Peek("Content-Security-Policy")); !strings.Contains(policy, "font-src 'self' data: https://esm.sh") {
+		t.Fatalf("CSP must allow Excalidraw's self-hosted font fallback declaration: %q", policy)
 	}
 	if !strings.Contains(string(root.Body()), `<div id="app"></div>`) {
 		t.Fatalf("embedded index is missing the Vue mount point: %s", root.Body())
@@ -637,7 +655,7 @@ func TestEmbeddedWebAndSPAFallback(t *testing.T) {
 		t.Fatalf("embedded index has no JavaScript asset: %s", root.Body())
 	}
 	assertStatus(t, performJSON(h, "GET", string(assetPath[1]), `{}`), 200)
-	assertStatus(t, performJSON(h, "GET", "/subjects/client-side-route", `{}`), 200)
+	assertStatus(t, performJSON(h, "GET", "/subjects/example-hashid", `{}`), 200)
 	assertStatus(t, performJSON(h, "GET", "/api/v1/does-not-exist", `{}`), 404)
 }
 
@@ -701,7 +719,11 @@ func performJSON(h *httpapi.App, method, path, body string, headers ...ut.Header
 }
 
 func validWhiteboardJSON(chapterID string) string {
-	return `{"data":{"version":2,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:test-content"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"store":{"document:document":{"id":"document:document","typeName":"document","gridSize":10,"name":"","meta":{}},"page:page":{"id":"page:page","typeName":"page","name":"Page 1","index":"a1","meta":{}}},"schema":{"schemaVersion":2,"sequences":{"com.tldraw.store":5,"com.tldraw.document":2,"com.tldraw.page":1}}}}}`
+	return `{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:test-content"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[` +
+		`{"x":24,"y":32,"id":"line-1","link":null,"seed":895096463,"type":"freedraw","angle":0,"index":"a0","width":120,"height":20,"locked":false,"points":[[0,0],[120,20]],"frameId":null,"opacity":100,"updated":1786895711611,"version":4,"groupIds":[],"fillStyle":"solid","isDeleted":false,"pressures":[],"roughness":1,"roundness":null,"strokeColor":"#1e1e1e","strokeStyle":"solid","strokeWidth":2,"versionNonce":1025703631,"boundElements":null,"backgroundColor":"transparent","simulatePressure":true,"lastCommittedPoint":[120,20]},` +
+		`{"x":180,"y":64,"id":"shape-1","link":null,"seed":1832806106,"type":"rectangle","angle":0,"index":"a1","width":110,"height":70,"locked":false,"frameId":null,"opacity":100,"updated":1786897837352,"version":3,"groupIds":[],"fillStyle":"solid","isDeleted":false,"roughness":1,"roundness":{"type":3},"strokeColor":"#1e1e1e","strokeStyle":"solid","strokeWidth":2,"versionNonce":97133318,"boundElements":null,"backgroundColor":"transparent"},` +
+		`{"x":340,"y":96,"id":"text-1","link":null,"seed":123456789,"type":"text","angle":0,"index":"a2","width":80,"height":25,"locked":false,"frameId":null,"opacity":100,"updated":1786897837353,"version":2,"groupIds":[],"fillStyle":"solid","isDeleted":false,"roughness":1,"roundness":null,"strokeColor":"#1e1e1e","strokeStyle":"solid","strokeWidth":2,"versionNonce":123456790,"boundElements":null,"backgroundColor":"transparent","text":"正文","fontSize":20,"fontFamily":1,"textAlign":"left","verticalAlign":"top","containerId":null,"originalText":"正文","autoResize":true,"lineHeight":1.25}` +
+		`],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`
 }
 
 func cookieHeader(response *protocol.Response) string {

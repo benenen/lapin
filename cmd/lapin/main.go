@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/benenen/lapin/internal/bootstrap"
 	"github.com/benenen/lapin/internal/config"
 	"github.com/benenen/lapin/internal/database"
 	"github.com/benenen/lapin/internal/httpapi"
@@ -22,6 +23,14 @@ func main() {
 	defer pool.Close()
 	if err := database.Migrate(ctx, pool); err != nil {
 		log.Fatal(err)
+	}
+	if settings.AdminEmail != "" {
+		if err := bootstrap.EnsureAdmin(ctx, pool, bootstrap.AdminCredentials{
+			Email:    settings.AdminEmail,
+			Password: settings.AdminPassword,
+		}); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	server := httpapi.New(pool, httpapi.Options{

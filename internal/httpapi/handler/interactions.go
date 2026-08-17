@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"math"
 	"strings"
 	"time"
@@ -266,45 +267,409 @@ func validWhiteboardData(data []byte, chapterHashID string) bool {
 			Fit    string  `json:"fit"`
 		} `json:"space"`
 		Document struct {
-			Store  map[string]json.RawMessage `json:"store"`
-			Schema json.RawMessage            `json:"schema"`
+			Type     string                     `json:"type"`
+			Version  int                        `json:"version"`
+			Elements []json.RawMessage          `json:"elements"`
+			AppState map[string]json.RawMessage `json:"appState"`
+			Files    map[string]json.RawMessage `json:"files"`
 		} `json:"document"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&document) != nil || document.Version != 2 || document.Anchor.Type != "chapter" || document.Anchor.ID != chapterHashID {
+	if decoder.Decode(&document) != nil || decoder.Decode(&struct{}{}) != io.EOF || document.Version != 3 || document.Anchor.Type != "chapter" || document.Anchor.ID != chapterHashID {
 		return false
 	}
 	if document.Anchor.ContentRevision == "" || len(document.Anchor.ContentRevision) > 128 || document.Space.Fit != "contain" {
 		return false
 	}
-	if !validCanvasDimension(document.Space.Width) || !validCanvasDimension(document.Space.Height) || document.Document.Store == nil || len(document.Document.Store) > 5_000 {
+	if !validCanvasDimension(document.Space.Width) || !validCanvasDimension(document.Space.Height) || document.Document.Type != "excalidraw" || document.Document.Version != 2 {
 		return false
 	}
-	var schema struct {
-		SchemaVersion int            `json:"schemaVersion"`
-		Sequences     map[string]int `json:"sequences"`
-	}
-	if json.Unmarshal(document.Document.Schema, &schema) != nil || schema.SchemaVersion < 1 || schema.Sequences == nil || schema.Sequences["com.tldraw.store"] < 1 || schema.Sequences["com.tldraw.document"] < 1 || schema.Sequences["com.tldraw.page"] < 1 {
+	if document.Document.Elements == nil || len(document.Document.Elements) > 5_000 || len(document.Document.AppState) != 1 || document.Document.Files == nil || len(document.Document.Files) != 0 {
 		return false
 	}
-	hasDocument := false
-	hasPage := false
-	for key, record := range document.Document.Store {
-		if key == "" || len(key) > 200 || len(record) > 100_000 {
-			return false
-		}
-		var object struct {
-			ID       string `json:"id"`
-			TypeName string `json:"typeName"`
-		}
-		if json.Unmarshal(record, &object) != nil || object.ID != key || object.TypeName == "" || len(object.TypeName) > 64 {
-			return false
-		}
-		hasDocument = hasDocument || object.TypeName == "document"
-		hasPage = hasPage || object.TypeName == "page"
+	var background string
+	if json.Unmarshal(document.Document.AppState["viewBackgroundColor"], &background) != nil || background != "transparent" {
+		return false
 	}
-	return hasDocument && hasPage
+	elementIDs := make(map[string]struct{}, len(document.Document.Elements))
+	elementTypes := make(map[string]string, len(document.Document.Elements))
+	validatedElements := make([]whiteboardElement, 0, len(document.Document.Elements))
+	for _, record := range document.Document.Elements {
+		if len(record) == 0 || len(record) > 100_000 {
+			return false
+		}
+		elementID, ok := validWhiteboardElement(record)
+		if !ok {
+			return false
+		}
+		if _, exists := elementIDs[elementID]; exists {
+			return false
+		}
+		elementIDs[elementID] = struct{}{}
+		var element whiteboardElement
+		if json.Unmarshal(record, &element) != nil {
+			return false
+		}
+		elementTypes[elementID] = element.Type
+		validatedElements = append(validatedElements, element)
+	}
+	return validWhiteboardElementReferences(validatedElements, elementTypes)
+}
+
+type whiteboardElement struct {
+	ID                 string                    `json:"id"`
+	Type               string                    `json:"type"`
+	X                  *float64                  `json:"x"`
+	Y                  *float64                  `json:"y"`
+	Width              *float64                  `json:"width"`
+	Height             *float64                  `json:"height"`
+	Angle              *float64                  `json:"angle"`
+	Seed               *int64                    `json:"seed"`
+	Version            *int64                    `json:"version"`
+	VersionNonce       *int64                    `json:"versionNonce"`
+	Updated            *int64                    `json:"updated"`
+	Opacity            *float64                  `json:"opacity"`
+	StrokeWidth        *float64                  `json:"strokeWidth"`
+	Roughness          *float64                  `json:"roughness"`
+	IsDeleted          *bool                     `json:"isDeleted"`
+	Locked             *bool                     `json:"locked"`
+	Index              *string                   `json:"index"`
+	StrokeColor        *string                   `json:"strokeColor"`
+	BackgroundColor    *string                   `json:"backgroundColor"`
+	FillStyle          *string                   `json:"fillStyle"`
+	StrokeStyle        *string                   `json:"strokeStyle"`
+	Roundness          *whiteboardRoundness      `json:"roundness"`
+	GroupIDs           *[]string                 `json:"groupIds"`
+	FrameID            *string                   `json:"frameId"`
+	BoundElements      *[]whiteboardBoundElement `json:"boundElements"`
+	Link               *string                   `json:"link"`
+	Points             *[][]float64              `json:"points"`
+	LastCommittedPoint []float64                 `json:"lastCommittedPoint"`
+	StartBinding       *whiteboardBinding        `json:"startBinding"`
+	EndBinding         *whiteboardBinding        `json:"endBinding"`
+	StartArrowhead     *string                   `json:"startArrowhead"`
+	EndArrowhead       *string                   `json:"endArrowhead"`
+	Elbowed            *bool                     `json:"elbowed"`
+	FixedSegments      *[]whiteboardFixedSegment `json:"fixedSegments"`
+	StartIsSpecial     *bool                     `json:"startIsSpecial"`
+	EndIsSpecial       *bool                     `json:"endIsSpecial"`
+	Pressures          *[]float64                `json:"pressures"`
+	SimulatePressure   *bool                     `json:"simulatePressure"`
+	Text               *string                   `json:"text"`
+	OriginalText       *string                   `json:"originalText"`
+	FontSize           *float64                  `json:"fontSize"`
+	FontFamily         *int64                    `json:"fontFamily"`
+	TextAlign          *string                   `json:"textAlign"`
+	VerticalAlign      *string                   `json:"verticalAlign"`
+	LineHeight         *float64                  `json:"lineHeight"`
+	ContainerID        *string                   `json:"containerId"`
+	AutoResize         *bool                     `json:"autoResize"`
+}
+
+type whiteboardRoundness struct {
+	Type  int      `json:"type"`
+	Value *float64 `json:"value,omitempty"`
+}
+
+type whiteboardBoundElement struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
+type whiteboardBinding struct {
+	ElementID  string          `json:"elementId"`
+	Focus      *float64        `json:"focus"`
+	Gap        *float64        `json:"gap"`
+	FixedPoint json.RawMessage `json:"fixedPoint,omitempty"`
+}
+
+type whiteboardFixedSegment struct {
+	Start []float64 `json:"start"`
+	End   []float64 `json:"end"`
+	Index *int64    `json:"index"`
+}
+
+func validWhiteboardElement(record []byte) (string, bool) {
+	var element whiteboardElement
+	decoder := json.NewDecoder(bytes.NewReader(record))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&element) != nil || decoder.Decode(&struct{}{}) != io.EOF || element.ID == "" || len(element.ID) > 128 || !allowedWhiteboardElementType(element.Type) {
+		return "", false
+	}
+	if !validWhiteboardElementSchema(record, element) {
+		return "", false
+	}
+	if !finiteInRange(element.X, -100_000, 100_000) || !finiteInRange(element.Y, -100_000, 100_000) ||
+		!finiteInRange(element.Width, 0, 100_000) || !finiteInRange(element.Height, 0, 100_000) || !finiteInRange(element.Angle, -1_000, 1_000) {
+		return "", false
+	}
+	if element.Seed == nil || *element.Seed < 0 || *element.Seed > math.MaxInt32 ||
+		element.Version == nil || *element.Version < 1 || *element.Version > 1_000_000_000 ||
+		element.VersionNonce == nil || *element.VersionNonce < 0 || *element.VersionNonce > math.MaxInt32 ||
+		element.Updated == nil || *element.Updated < 0 || *element.Updated > 1_000_000_000_000_000 ||
+		!finiteInRange(element.Opacity, 0, 100) || !finiteInRange(element.StrokeWidth, 0, 1_000) || !finiteInRange(element.Roughness, 0, 100) ||
+		element.IsDeleted == nil || *element.IsDeleted || element.Locked == nil {
+		return "", false
+	}
+	if !validElementString(element.Index, 64) || !validElementString(element.StrokeColor, 64) || !validElementString(element.BackgroundColor, 64) ||
+		!validElementString(element.FillStyle, 64) || !validElementString(element.StrokeStyle, 64) || element.GroupIDs == nil || len(*element.GroupIDs) > 100 {
+		return "", false
+	}
+	for _, groupID := range *element.GroupIDs {
+		if groupID == "" || len(groupID) > 128 {
+			return "", false
+		}
+	}
+	if !validWhiteboardRelationships(element) {
+		return "", false
+	}
+	if element.Type == "arrow" || element.Type == "line" || element.Type == "freedraw" {
+		if !validElementPoints(element.Points) {
+			return "", false
+		}
+	}
+	if element.Type == "freedraw" {
+		if element.Pressures == nil || len(*element.Pressures) > 10_000 || element.SimulatePressure == nil {
+			return "", false
+		}
+		for _, pressure := range *element.Pressures {
+			if math.IsNaN(pressure) || math.IsInf(pressure, 0) || pressure < 0 || pressure > 1 {
+				return "", false
+			}
+		}
+	}
+	if element.Type == "text" {
+		if element.Text == nil || len(*element.Text) > 50_000 || element.OriginalText == nil || len(*element.OriginalText) > 50_000 ||
+			!finiteInRange(element.FontSize, 1, 1_000) || element.FontFamily == nil || *element.FontFamily < 1 || *element.FontFamily > 100 ||
+			!oneOfElementString(element.TextAlign, "left", "center", "right") || !oneOfElementString(element.VerticalAlign, "top", "middle", "bottom") ||
+			!finiteInRange(element.LineHeight, 0.1, 10) || element.AutoResize == nil || !validOptionalElementID(element.ContainerID) {
+			return "", false
+		}
+	}
+	return element.ID, true
+}
+
+func validWhiteboardElementSchema(record []byte, element whiteboardElement) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(record, &fields) != nil {
+		return false
+	}
+	allowed := make(map[string]struct{})
+	required := make(map[string]struct{})
+	addWhiteboardFields(allowed, required,
+		"id", "type", "x", "y", "strokeColor", "backgroundColor", "fillStyle", "strokeWidth", "strokeStyle", "roundness",
+		"roughness", "opacity", "width", "height", "angle", "seed", "version", "versionNonce", "index", "isDeleted",
+		"groupIds", "frameId", "boundElements", "updated", "link", "locked",
+	)
+	switch element.Type {
+	case "rectangle", "diamond", "ellipse":
+	case "line":
+		addWhiteboardFields(allowed, required, "points", "lastCommittedPoint", "startBinding", "endBinding", "startArrowhead", "endArrowhead")
+	case "arrow":
+		addWhiteboardFields(allowed, required, "points", "lastCommittedPoint", "startBinding", "endBinding", "startArrowhead", "endArrowhead", "elbowed")
+		addWhiteboardFields(allowed, nil, "fixedSegments", "startIsSpecial", "endIsSpecial")
+		if element.Elbowed == nil {
+			return false
+		}
+		if *element.Elbowed {
+			addWhiteboardFields(nil, required, "fixedSegments", "startIsSpecial", "endIsSpecial")
+		} else if hasAnyWhiteboardField(fields, "fixedSegments", "startIsSpecial", "endIsSpecial") {
+			return false
+		}
+	case "freedraw":
+		addWhiteboardFields(allowed, required, "points", "pressures", "simulatePressure", "lastCommittedPoint")
+	case "text":
+		addWhiteboardFields(allowed, required, "fontSize", "fontFamily", "text", "textAlign", "verticalAlign", "containerId", "originalText", "autoResize", "lineHeight")
+	default:
+		return false
+	}
+	for field := range fields {
+		if _, ok := allowed[field]; !ok {
+			return false
+		}
+	}
+	for field := range required {
+		if _, ok := fields[field]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func addWhiteboardFields(allowed, required map[string]struct{}, fields ...string) {
+	for _, field := range fields {
+		if allowed != nil {
+			allowed[field] = struct{}{}
+		}
+		if required != nil {
+			required[field] = struct{}{}
+		}
+	}
+}
+
+func hasAnyWhiteboardField(fields map[string]json.RawMessage, names ...string) bool {
+	for _, name := range names {
+		if _, ok := fields[name]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func validWhiteboardElementReferences(elements []whiteboardElement, elementTypes map[string]string) bool {
+	for _, element := range elements {
+		if element.FrameID != nil {
+			return false
+		}
+		if element.BoundElements != nil {
+			for _, bound := range *element.BoundElements {
+				if targetType, ok := elementTypes[bound.ID]; !ok || targetType != bound.Type {
+					return false
+				}
+			}
+		}
+		if !validWhiteboardBindingReference(element.StartBinding, elementTypes) || !validWhiteboardBindingReference(element.EndBinding, elementTypes) {
+			return false
+		}
+		if element.ContainerID != nil {
+			targetType, ok := elementTypes[*element.ContainerID]
+			if !ok || (targetType != "rectangle" && targetType != "diamond" && targetType != "ellipse" && targetType != "arrow") {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validWhiteboardBindingReference(binding *whiteboardBinding, elementTypes map[string]string) bool {
+	if binding == nil {
+		return true
+	}
+	targetType, ok := elementTypes[binding.ElementID]
+	return ok && (targetType == "rectangle" || targetType == "diamond" || targetType == "ellipse" || targetType == "text")
+}
+
+func validWhiteboardRelationships(element whiteboardElement) bool {
+	if element.Roundness != nil {
+		if element.Roundness.Type < 1 || element.Roundness.Type > 3 ||
+			(element.Roundness.Value != nil && !finiteInRange(element.Roundness.Value, 0, 100_000)) {
+			return false
+		}
+	}
+	if !validOptionalElementID(element.FrameID) || !validOptionalLink(element.Link) {
+		return false
+	}
+	if element.BoundElements != nil {
+		if len(*element.BoundElements) > 100 {
+			return false
+		}
+		for _, bound := range *element.BoundElements {
+			if bound.ID == "" || len(bound.ID) > 128 || (bound.Type != "arrow" && bound.Type != "text") {
+				return false
+			}
+		}
+	}
+	requireFixedPoint := element.Type == "arrow" && element.Elbowed != nil && *element.Elbowed
+	if !validWhiteboardBinding(element.StartBinding, requireFixedPoint) || !validWhiteboardBinding(element.EndBinding, requireFixedPoint) ||
+		!validArrowhead(element.StartArrowhead) || !validArrowhead(element.EndArrowhead) || !validPoint(element.LastCommittedPoint, true) {
+		return false
+	}
+	if element.FixedSegments != nil {
+		if len(*element.FixedSegments) > 10_000 {
+			return false
+		}
+		for _, segment := range *element.FixedSegments {
+			if !validPoint(segment.Start, false) || !validPoint(segment.End, false) || segment.Index == nil || *segment.Index < 0 || *segment.Index > 10_000 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validWhiteboardBinding(binding *whiteboardBinding, requireFixedPoint bool) bool {
+	if binding == nil {
+		return true
+	}
+	if binding.ElementID == "" || len(binding.ElementID) > 128 || !finiteInRange(binding.Focus, -10, 10) || !finiteInRange(binding.Gap, -100_000, 100_000) {
+		return false
+	}
+	if !requireFixedPoint {
+		return len(binding.FixedPoint) == 0
+	}
+	var point []float64
+	return len(binding.FixedPoint) > 0 && string(binding.FixedPoint) != "null" && json.Unmarshal(binding.FixedPoint, &point) == nil && validPoint(point, false)
+}
+
+func validArrowhead(arrowhead *string) bool {
+	if arrowhead == nil {
+		return true
+	}
+	switch *arrowhead {
+	case "arrow", "bar", "dot", "circle", "circle_outline", "triangle", "triangle_outline", "diamond", "diamond_outline", "crowfoot_one", "crowfoot_many", "crowfoot_one_or_many":
+		return true
+	default:
+		return false
+	}
+}
+
+func validOptionalElementID(value *string) bool {
+	return value == nil || (*value != "" && len(*value) <= 128)
+}
+
+func validOptionalLink(value *string) bool {
+	return value == nil || len(*value) <= 2_048
+}
+
+func validPoint(point []float64, optional bool) bool {
+	if point == nil {
+		return optional
+	}
+	return len(point) == 2 && !math.IsNaN(point[0]) && !math.IsInf(point[0], 0) && math.Abs(point[0]) <= 100_000 &&
+		!math.IsNaN(point[1]) && !math.IsInf(point[1], 0) && math.Abs(point[1]) <= 100_000
+}
+
+func finiteInRange(value *float64, minimum, maximum float64) bool {
+	return value != nil && !math.IsNaN(*value) && !math.IsInf(*value, 0) && *value >= minimum && *value <= maximum
+}
+
+func validElementString(value *string, maximum int) bool {
+	return value != nil && *value != "" && len(*value) <= maximum
+}
+
+func oneOfElementString(value *string, allowed ...string) bool {
+	if value == nil {
+		return false
+	}
+	for _, candidate := range allowed {
+		if *value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func validElementPoints(points *[][]float64) bool {
+	if points == nil || len(*points) == 0 || len(*points) > 10_000 {
+		return false
+	}
+	for _, point := range *points {
+		if len(point) != 2 || math.IsNaN(point[0]) || math.IsInf(point[0], 0) || math.Abs(point[0]) > 100_000 ||
+			math.IsNaN(point[1]) || math.IsInf(point[1], 0) || math.Abs(point[1]) > 100_000 {
+			return false
+		}
+	}
+	return true
+}
+
+func allowedWhiteboardElementType(value string) bool {
+	switch value {
+	case "rectangle", "diamond", "ellipse", "arrow", "line", "freedraw", "text":
+		return true
+	default:
+		return false
+	}
 }
 
 func validCanvasDimension(value float64) bool {

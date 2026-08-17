@@ -48,11 +48,32 @@ export interface Whiteboard {
   chapter_id: string
   user_id: string
   author_name: string
-  data: WhiteboardData
+  data: PersistedWhiteboardData
   updated_at: string
 }
 
 export interface WhiteboardData {
+  version: 3
+  anchor: {
+    type: 'chapter'
+    id: string
+    content_revision: string
+  }
+  space: {
+    width: number
+    height: number
+    fit: 'contain'
+  }
+  document: {
+    type: 'excalidraw'
+    version: 2
+    elements: Array<Record<string, unknown>>
+    appState: Record<string, unknown>
+    files: Record<string, unknown>
+  }
+}
+
+export interface LegacyTldrawWhiteboardData {
   version: 2
   anchor: {
     type: 'chapter'
@@ -69,6 +90,8 @@ export interface WhiteboardData {
     schema: Record<string, unknown>
   }
 }
+
+export type PersistedWhiteboardData = WhiteboardData | LegacyTldrawWhiteboardData
 
 export interface Comment {
   id: string

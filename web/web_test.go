@@ -26,7 +26,7 @@ func TestEmbeddedAssetsAndFallback(t *testing.T) {
 	if response := performRequest(h, string(asset[1])); response.StatusCode() != 200 {
 		t.Fatalf("asset response = %d", response.StatusCode())
 	}
-	if response := performRequest(h, "/client/side/route"); response.StatusCode() != 200 {
+	if response := performRequest(h, "/subjects/example-hashid"); response.StatusCode() != 200 {
 		t.Fatalf("SPA fallback response = %d", response.StatusCode())
 	}
 	if response := performRequest(h, "/api/missing"); response.StatusCode() != 404 {

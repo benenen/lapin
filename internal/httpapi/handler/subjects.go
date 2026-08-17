@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/benenen/lapin/internal/database"
 )
@@ -175,6 +176,42 @@ func (h *Handler) GetSubject(ctx context.Context, c *app.RequestContext) {
 	writeData(c, 200, subject)
 }
 
+func (h *Handler) UpdateSubject(ctx context.Context, c *app.RequestContext) {
+	subjectID, err := h.ids.Decode(c.Param("id"))
+	if err != nil {
+		writeError(c, 400, "invalid_id", "科目 ID 无效")
+		return
+	}
+	var request struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if !decodeJSON(c, &request) {
+		return
+	}
+	request.Title = strings.TrimSpace(request.Title)
+	request.Description = strings.TrimSpace(request.Description)
+	if request.Title == "" || utf8.RuneCountInString(request.Title) > 200 || utf8.RuneCountInString(request.Description) > 4000 {
+		writeError(c, 400, "invalid_input", "请检查科目标题和简介")
+		return
+	}
+	subject, err := database.UpdateSubjectForOwner(ctx, h.db, subjectID, currentUser(c).ID, request.Title, request.Description)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(c, 404, "not_found", "科目不存在或无权操作")
+		return
+	}
+	if err != nil {
+		writeError(c, 500, "internal_error", "更新科目失败")
+		return
+	}
+	view, err := h.subjectView(ctx, subject, true)
+	if err != nil {
+		writeError(c, 500, "internal_error", "读取科目失败")
+		return
+	}
+	writeData(c, 200, view)
+}
+
 func (h *Handler) fetchSubject(ctx context.Context, id int64) (subjectView, error) {
 	subject, err := database.FindSubjectByID(ctx, h.db, id)
 	if err != nil {
@@ -283,6 +320,36 @@ func (h *Handler) CreateChapter(ctx context.Context, c *app.RequestContext) {
 	}
 	chapter.CreatedAt = time.Now().UTC()
 	writeData(c, 201, h.chapterView(chapter))
+}
+
+func (h *Handler) UpdateChapter(ctx context.Context, c *app.RequestContext) {
+	chapterID, err := h.ids.Decode(c.Param("id"))
+	if err != nil {
+		writeError(c, 400, "invalid_id", "章节 ID 无效")
+		return
+	}
+	var request struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+	if !decodeJSON(c, &request) {
+		return
+	}
+	request.Title = strings.TrimSpace(request.Title)
+	if request.Title == "" || utf8.RuneCountInString(request.Title) > 200 || utf8.RuneCountInString(request.Content) > 200_000 {
+		writeError(c, 400, "invalid_input", "请检查章节标题和内容")
+		return
+	}
+	chapter, err := database.UpdateChapterForOwner(ctx, h.db, chapterID, currentUser(c).ID, request.Title, request.Content)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(c, 404, "not_found", "章节不存在或无权操作")
+		return
+	}
+	if err != nil {
+		writeError(c, 500, "internal_error", "更新章节失败")
+		return
+	}
+	writeData(c, 200, h.chapterView(chapter))
 }
 
 func (h *Handler) ReplaceTags(ctx context.Context, c *app.RequestContext) {

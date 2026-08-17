@@ -3,9 +3,11 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type Config struct {
@@ -15,14 +17,18 @@ type Config struct {
 	SecureCookies     bool
 	HashIDSalt        string
 	TrustedProxyCIDRs []*net.IPNet
+	AdminEmail        string
+	AdminPassword     string
 }
 
 func Load() (Config, error) {
 	config := Config{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		HTTPAddress: envOr("HTTP_ADDR", ":8080"),
-		Environment: strings.ToLower(envOr("APP_ENV", "development")),
-		HashIDSalt:  envOr("HASHID_SALT", "lapin-development-salt"),
+		DatabaseURL:   os.Getenv("DATABASE_URL"),
+		HTTPAddress:   envOr("HTTP_ADDR", ":8080"),
+		Environment:   strings.ToLower(envOr("APP_ENV", "development")),
+		HashIDSalt:    envOr("HASHID_SALT", "lapin-development-salt"),
+		AdminEmail:    strings.ToLower(strings.TrimSpace(os.Getenv("ADMIN_EMAIL"))),
+		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 	}
 	if config.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
@@ -40,12 +46,28 @@ func Load() (Config, error) {
 	if config.Environment == "production" && !config.SecureCookies {
 		return Config{}, fmt.Errorf("SECURE_COOKIES must be true in production")
 	}
+	if (config.AdminEmail == "") != (config.AdminPassword == "") {
+		return Config{}, fmt.Errorf("ADMIN_EMAIL and ADMIN_PASSWORD must be set together")
+	}
+	if config.AdminEmail != "" {
+		if !validEmail(config.AdminEmail) {
+			return Config{}, fmt.Errorf("ADMIN_EMAIL must be a valid email address")
+		}
+		if utf8.RuneCountInString(config.AdminPassword) < 12 || len(config.AdminPassword) > 128 {
+			return Config{}, fmt.Errorf("ADMIN_PASSWORD must be at least 12 characters and at most 128 bytes")
+		}
+	}
 	var err error
 	config.TrustedProxyCIDRs, err = parseCIDRs(os.Getenv("TRUSTED_PROXY_CIDRS"))
 	if err != nil {
 		return Config{}, err
 	}
 	return config, nil
+}
+
+func validEmail(email string) bool {
+	address, err := mail.ParseAddress(email)
+	return err == nil && strings.EqualFold(address.Address, email) && len(email) <= 254
 }
 
 func parseCIDRs(value string) ([]*net.IPNet, error) {
