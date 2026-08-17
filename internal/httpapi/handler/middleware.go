@@ -56,7 +56,7 @@ func (h *Handler) rateLimit(limiter *fixedWindowLimiter) app.HandlerFunc {
 				seconds = 1
 			}
 			c.Response.Header.Set("Retry-After", strconv.Itoa(seconds))
-			writeError(c, 429, "rate_limited", "请求过于频繁，请稍后重试")
+			writeError(c, 429, errorCodeRateLimited, "请求过于频繁，请稍后重试")
 			c.Abort()
 			return
 		}
@@ -82,30 +82,30 @@ func (h *Handler) RequireSession(checkCSRF bool) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		raw := string(c.Cookie("lapin_session"))
 		if raw == "" {
-			writeError(c, 401, "unauthenticated", "请先登录")
+			writeError(c, 401, errorCodeUnauthenticated, "请先登录")
 			c.Abort()
 			return
 		}
 		session, err := database.FindActiveSessionByHash(ctx, h.db, auth.HashToken(raw))
 		if err != nil {
-			writeError(c, 401, "unauthenticated", "登录已失效")
+			writeError(c, 401, errorCodeUnauthenticated, "登录已失效")
 			c.Abort()
 			return
 		}
 		userRecord, err := database.FindUserByID(ctx, h.db, session.UserID)
 		if err != nil {
-			writeError(c, 401, "unauthenticated", "登录已失效")
+			writeError(c, 401, errorCodeUnauthenticated, "登录已失效")
 			c.Abort()
 			return
 		}
 		roles, err := database.ListRoleCodesForUser(ctx, h.db, userRecord.ID)
 		if err != nil {
-			writeError(c, 401, "unauthenticated", "登录已失效")
+			writeError(c, 401, errorCodeUnauthenticated, "登录已失效")
 			c.Abort()
 			return
 		}
 		if checkCSRF && !validCSRF(c, session.CSRFHash) {
-			writeError(c, 403, "invalid_csrf", "请求校验失败，请刷新页面后重试")
+			writeError(c, 403, errorCodeInvalidCSRF, "请求校验失败，请刷新页面后重试")
 			c.Abort()
 			return
 		}
@@ -120,7 +120,7 @@ func (h *Handler) RequireCSRF() app.HandlerFunc {
 		raw := string(c.Cookie("lapin_session"))
 		session, err := database.FindActiveSessionByHash(ctx, h.db, auth.HashToken(raw))
 		if raw == "" || err != nil || !validCSRF(c, session.CSRFHash) {
-			writeError(c, 403, "invalid_csrf", "请求校验失败，请刷新页面后重试")
+			writeError(c, 403, errorCodeInvalidCSRF, "请求校验失败，请刷新页面后重试")
 			c.Abort()
 			return
 		}
@@ -139,25 +139,25 @@ func (h *Handler) RequireAccessToken() app.HandlerFunc {
 		header := string(c.Request.Header.Peek("Authorization"))
 		raw, ok := strings.CutPrefix(header, "Bearer ")
 		if !ok || !strings.HasPrefix(raw, "lpn_") {
-			writeError(c, 401, "invalid_access_token", "Access Token 无效")
+			writeError(c, 401, errorCodeInvalidAccessToken, "Access Token 无效")
 			c.Abort()
 			return
 		}
 		token, err := database.FindActiveAccessTokenByHash(ctx, h.db, auth.HashToken(raw))
 		if err != nil {
-			writeError(c, 401, "invalid_access_token", "Access Token 无效")
+			writeError(c, 401, errorCodeInvalidAccessToken, "Access Token 无效")
 			c.Abort()
 			return
 		}
 		userRecord, err := database.FindUserByID(ctx, h.db, token.UserID)
 		if err != nil {
-			writeError(c, 401, "invalid_access_token", "Access Token 无效")
+			writeError(c, 401, errorCodeInvalidAccessToken, "Access Token 无效")
 			c.Abort()
 			return
 		}
 		roles, err := database.ListRoleCodesForUser(ctx, h.db, userRecord.ID)
 		if err != nil {
-			writeError(c, 401, "invalid_access_token", "Access Token 无效")
+			writeError(c, 401, errorCodeInvalidAccessToken, "Access Token 无效")
 			c.Abort()
 			return
 		}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "external_id": "course-stable-id",
+  "title": "课程标题",
+  "description": "课程简介",
+  "tags": ["标签"],
+  "chapters": [
+    {
+      "external_id": "part-one",
+      "title": "第一部分",
+      "children": [
+        {
+          "external_id": "chapter-one",
+          "title": "第一章",
+          "content_file": "chapters/01-introduction.md"
+        }
+      ]
+    }
+  ]
+}

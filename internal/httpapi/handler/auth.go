@@ -30,7 +30,7 @@ type userView struct {
 
 func (h *Handler) Register(ctx context.Context, c *app.RequestContext) {
 	if !validAuthRequestOrigin(c) {
-		writeError(c, 403, "invalid_origin", "请求来源无效")
+		writeError(c, 403, errorCodeInvalidOrigin, "请求来源无效")
 		return
 	}
 	var request struct {
@@ -46,7 +46,7 @@ func (h *Handler) Register(ctx context.Context, c *app.RequestContext) {
 	request.Name = strings.TrimSpace(request.Name)
 	request.AvatarURL = strings.TrimSpace(request.AvatarURL)
 	if !validEmail(request.Email) || len(request.Name) < 1 || len(request.Name) > 80 || !validAvatarURL(request.AvatarURL) || len(request.Password) < 8 || len(request.Password) > 128 {
-		writeError(c, 400, "invalid_input", "请检查邮箱、昵称和密码（密码至少 8 位）")
+		writeError(c, 400, errorCodeInvalidInput, "请检查邮箱、昵称和密码（密码至少 8 位）")
 		return
 	}
 	if !h.allowAccountRequest(c, accountLimiterKey("register", request.Email)) {
@@ -55,13 +55,13 @@ func (h *Handler) Register(ctx context.Context, c *app.RequestContext) {
 
 	passwordHash, err := h.hashPassword(ctx, request.Password)
 	if err != nil {
-		writeError(c, 503, "service_busy", "密码服务繁忙，请稍后重试")
+		writeError(c, 503, errorCodeServiceBusy, "密码服务繁忙，请稍后重试")
 		return
 	}
 	createdAt := time.Now().UTC()
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		writeError(c, 500, "internal_error", "服务暂时不可用")
+		writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -72,24 +72,24 @@ func (h *Handler) Register(ctx context.Context, c *app.RequestContext) {
 	if err != nil {
 		var databaseError *pgconn.PgError
 		if errors.As(err, &databaseError) && databaseError.Code == "23505" {
-			writeError(c, 409, "email_exists", "该邮箱已注册")
+			writeError(c, 409, errorCodeEmailExists, "该邮箱已注册")
 		} else {
-			writeError(c, 500, "internal_error", "服务暂时不可用")
+			writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		}
 		return
 	}
 	if err := database.AssignRoleByCode(ctx, tx, userID, "learner"); err != nil {
-		writeError(c, 500, "internal_error", "服务暂时不可用")
+		writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
-		writeError(c, 500, "internal_error", "服务暂时不可用")
+		writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		return
 	}
 
 	csrfToken, err := h.createSession(ctx, c, userID)
 	if err != nil {
-		writeError(c, 500, "internal_error", "服务暂时不可用")
+		writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		return
 	}
 	user := userView{ID: h.ids.Encode(userID), Email: request.Email, Name: request.Name, AvatarURL: request.AvatarURL, Roles: []string{"learner"}, CreatedAt: createdAt}
@@ -98,7 +98,7 @@ func (h *Handler) Register(ctx context.Context, c *app.RequestContext) {
 
 func (h *Handler) Login(ctx context.Context, c *app.RequestContext) {
 	if !validAuthRequestOrigin(c) {
-		writeError(c, 403, "invalid_origin", "请求来源无效")
+		writeError(c, 403, errorCodeInvalidOrigin, "请求来源无效")
 		return
 	}
 	var request struct {
@@ -110,7 +110,7 @@ func (h *Handler) Login(ctx context.Context, c *app.RequestContext) {
 	}
 	request.Email = strings.ToLower(strings.TrimSpace(request.Email))
 	if !validEmail(request.Email) || request.Password == "" || len(request.Password) > 128 {
-		writeError(c, 401, "invalid_credentials", "邮箱或密码错误")
+		writeError(c, 401, errorCodeInvalidCredentials, "邮箱或密码错误")
 		return
 	}
 	if !h.allowAccountRequest(c, accountLimiterKey("login", request.Email)) {
@@ -118,7 +118,7 @@ func (h *Handler) Login(ctx context.Context, c *app.RequestContext) {
 	}
 	user, err := database.FindUserByEmail(ctx, h.db, request.Email)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		writeError(c, 500, "internal_error", "服务暂时不可用")
+		writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		return
 	}
 	encodedHash := dummyHash
@@ -127,21 +127,21 @@ func (h *Handler) Login(ctx context.Context, c *app.RequestContext) {
 	}
 	verified, verifyErr := h.verifyPassword(ctx, encodedHash, request.Password)
 	if verifyErr != nil {
-		writeError(c, 503, "service_busy", "密码服务繁忙，请稍后重试")
+		writeError(c, 503, errorCodeServiceBusy, "密码服务繁忙，请稍后重试")
 		return
 	}
 	if err != nil || !verified {
-		writeError(c, 401, "invalid_credentials", "邮箱或密码错误")
+		writeError(c, 401, errorCodeInvalidCredentials, "邮箱或密码错误")
 		return
 	}
 	roles, err := database.ListRoleCodesForUser(ctx, h.db, user.ID)
 	if err != nil {
-		writeError(c, 500, "internal_error", "服务暂时不可用")
+		writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		return
 	}
 	csrfToken, err := h.createSession(ctx, c, user.ID)
 	if err != nil {
-		writeError(c, 500, "internal_error", "服务暂时不可用")
+		writeError(c, 500, errorCodeInternal, "服务暂时不可用")
 		return
 	}
 	writeData(c, 200, map[string]any{
@@ -191,7 +191,7 @@ func (h *Handler) allowAccountRequest(c *app.RequestContext, key string) bool {
 		seconds = 1
 	}
 	c.Response.Header.Set("Retry-After", strconv.Itoa(seconds))
-	writeError(c, 429, "rate_limited", "请求过于频繁，请稍后重试")
+	writeError(c, 429, errorCodeRateLimited, "请求过于频繁，请稍后重试")
 	return false
 }
 

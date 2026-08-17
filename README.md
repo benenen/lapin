@@ -24,7 +24,7 @@ docker compose up --build
 
 打开 <http://localhost:8080>，注册账号即可使用。
 
-默认不创建管理员账号，也不存在默认管理员密码。如需首次启动时创建管理员，请在不会提交到 Git 的 `.env` 中成对设置：
+直接启动服务或使用 Docker Compose 时，默认不创建管理员账号，也不存在默认管理员密码。如需首次启动时创建管理员，请在不会提交到 Git 的 `.env` 中成对设置：
 
 ```dotenv
 ADMIN_EMAIL=<管理员邮箱>
@@ -61,6 +61,47 @@ curl -X POST http://localhost:8080/openapi/v1/subjects/import \
 
 `chapters[].content` 的存储格式是 Markdown。Web 端使用 Tiptap 3 的官方 `@tiptap/markdown` 在浏览器内完成 Markdown 与编辑器状态的双向转换，公式使用 `$...$`（行内）或 `$$...$$`（块级）并由 KaTeX 展示；Go 服务端直接存取 Markdown，不做格式转换。
 
+## CLI 课程导入
+
+`lapin-cli` 可以把一个 JSON manifest 引用的本地 Markdown 文档安全转换成上述 OpenAPI 请求。Token 只从环境变量读取，不支持命令行 Token 参数：
+
+```bash
+make build-cli
+
+export LAPIN_ACCESS_TOKEN='lpn_替换为你的Token'
+# 连接其他 Lapin 实例时设置；默认 http://127.0.0.1:8080
+export LAPIN_BASE_URL='https://lapin.example.com'
+
+./bin/lapin-cli course import --manifest ./course/course.json
+```
+
+manifest 使用 `version: 1`，章节可通过 `children` 递归嵌套，`content_file` 相对 manifest 所在目录解析：
+
+```json
+{
+  "version": 1,
+  "external_id": "go-basics-2026",
+  "title": "Go 入门",
+  "description": "从语言基础到 HTTP 服务",
+  "tags": ["Go", "后端"],
+  "chapters": [
+    {
+      "external_id": "part-language",
+      "title": "第一部分：语言基础",
+      "children": [
+        {
+          "external_id": "chapter-syntax",
+          "title": "第一章：基础语法",
+          "content_file": "chapters/01-syntax.md"
+        }
+      ]
+    }
+  ]
+}
+```
+
+CLI 会拒绝未知字段、非 UTF-8 文档、目录穿越、逃逸到 manifest 目录外的软链接、超出服务端限制的内容，以及对非本机地址使用明文 HTTP。它不会自动重试 POST 或跟随重定向。远程网络较慢且需要代理时，可使用标准 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY` 环境变量；不要把 Access Token 写入代理配置或日志。
+
 白板由 Vue 组件内部的轻量 React island 挂载 MIT 授权的 Excalidraw。保存时只持久化 Excalidraw elements 和必要的透明背景状态，不保存 camera/session，也暂不接受图片；外层契约包含章节 HashID、正文 SHA-256 版本及稳定参考尺寸。题目内容和透明画布共享同一局部坐标系，窗口变化只调整渲染比例，不会反复缩放并回写数据库坐标。旧版 tldraw 快照会保留并显示明确提示，只有用户选择新建并保存 Excalidraw 白板后才会替换。当前 MVP 以章节为锚点，后续可细化到题目或内容块。
 
 数据库内部所有实体和关联记录均使用 PostgreSQL 自增 `BIGINT`。HTTP API 只返回 HashID 字符串，Web 端不会看到数据库原始 long ID。
@@ -86,6 +127,11 @@ HASHID_SALT='replace-with-a-private-stable-value' go run ./cmd/lapin
 # 或使用项目锁定版本的 Air 监听 Go/迁移 SQL，同时启动 Vite 前端开发服务
 make watch
 # 打开 http://localhost:5173；退出 make watch 时两个开发进程会一并停止
+# 仅 make watch 会为本地开发默认创建 admin@localhost / admin12345678
+# 默认账号仅允许 development + loopback HTTP_ADDR + loopback PostgreSQL
+# 可通过环境变量成对设置 ADMIN_EMAIL、ADMIN_PASSWORD 覆盖，不要作为 make 命令行变量传入
+# 凭据仅交给一次性 bootstrap，不传给 npm、Go build、Air 或 Vite
+# PostgreSQL 配置统一写入 DATABASE_URL；make watch 会拒绝 PGPASSWORD 等 PG* 环境变量
 
 # Web（另一个终端）
 npm --prefix web install

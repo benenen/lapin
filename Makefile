@@ -1,4 +1,4 @@
-.PHONY: dev watch air build test test-go test-web web-install web-build clean
+.PHONY: dev watch air watch-admin-bootstrap build build-cli test test-go test-web test-watch web-install web-build clean
 
 TEST_DATABASE_URL ?= postgres://postgres:postgres@127.0.0.1:5433/lapin_test?sslmode=disable
 DATABASE_URL ?= postgres://postgres:postgres@127.0.0.1:5433/lapin_test?sslmode=disable
@@ -8,6 +8,8 @@ AIR_GOBIN := $(CURDIR)/bin/tools/air/$(AIR_VERSION)
 AIR_BIN := $(AIR_GOBIN)/air
 AIR_INSTALLER := scripts/install-air.sh
 WATCH_RUNNER := scripts/watch.sh
+WATCH_ADMIN_BOOTSTRAP_BIN := $(CURDIR)/bin/watch/lapin-admin-bootstrap
+BIN_DIR := bin
 
 dev:
 	docker compose up --build
@@ -17,11 +19,21 @@ air: $(AIR_INSTALLER)
 
 watch: export DATABASE_URL := $(DATABASE_URL)
 watch: export HASHID_SALT := $(HASHID_SALT)
-watch: web-build air | $(WATCH_RUNNER)
-	@bash '$(WATCH_RUNNER)' '$(AIR_BIN)'
+watch: | $(WATCH_RUNNER)
+	@bash '$(WATCH_RUNNER)' '$(AIR_BIN)' '$(WATCH_ADMIN_BOOTSTRAP_BIN)'
 
-build: web-build
-	go build -o bin/lapin ./cmd/lapin
+watch-admin-bootstrap:
+	mkdir -p '$(dir $(WATCH_ADMIN_BOOTSTRAP_BIN))'
+	go build -o '$(WATCH_ADMIN_BOOTSTRAP_BIN)' ./cmd/lapin-admin-bootstrap
+
+build: web-build build-cli | $(BIN_DIR)
+	go build -o $(BIN_DIR)/lapin ./cmd/lapin
+
+build-cli: | $(BIN_DIR)
+	go build -o $(BIN_DIR)/lapin-cli ./cmd/lapin-cli
+
+$(BIN_DIR):
+	mkdir -p '$(BIN_DIR)'
 
 web-install:
 	npm --prefix web ci
@@ -29,7 +41,7 @@ web-install:
 web-build: web-install
 	npm --prefix web run build
 
-test: test-web test-go
+test: test-web test-watch test-go
 
 test-go: web-build
 	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' go test -race -coverpkg=./... -cover ./...
@@ -37,6 +49,9 @@ test-go: web-build
 test-web: web-install
 	npm --prefix web test
 	npm --prefix web run typecheck
+
+test-watch:
+	bash scripts/watch_test.sh
 
 clean:
 	go clean

@@ -50,20 +50,20 @@ func (h *Handler) CreateAnnotation(ctx context.Context, c *app.RequestContext) {
 		request.Color = "yellow"
 	}
 	if request.StartOffset < 0 || request.EndOffset < request.StartOffset || request.Note == "" || utf8.RuneCountInString(request.Note) > 2000 || utf8.RuneCountInString(request.Quote) > 1000 || !allowedAnnotationColor(request.Color) {
-		writeError(c, 400, "invalid_input", "标注范围、内容或颜色无效")
+		writeError(c, 400, errorCodeInvalidInput, "标注范围、内容或颜色无效")
 		return
 	}
 	chapter, err := database.FindChapterByID(ctx, h.db, chapterID)
 	quoteLength := len(utf16.Encode([]rune(request.Quote)))
 	if err != nil || request.EndOffset > len(utf16.Encode([]rune(chapter.Content))) || request.EndOffset-request.StartOffset != quoteLength {
-		writeError(c, 400, "invalid_input", "标注未匹配当前章节正文")
+		writeError(c, 400, errorCodeInvalidInput, "标注未匹配当前章节正文")
 		return
 	}
 	if request.Quote == "" {
 		request.StartOffset = 0
 		request.EndOffset = 0
 	} else if !strings.Contains(chapter.Content, request.Quote) {
-		writeError(c, 400, "invalid_input", "标注未匹配当前章节正文")
+		writeError(c, 400, errorCodeInvalidInput, "标注未匹配当前章节正文")
 		return
 	}
 	user := currentUser(c)
@@ -74,7 +74,7 @@ func (h *Handler) CreateAnnotation(ctx context.Context, c *app.RequestContext) {
 	}
 	annotation.ID, err = database.InsertAnnotation(ctx, h.db, annotation)
 	if err != nil {
-		writeError(c, 500, "internal_error", "保存标注失败")
+		writeError(c, 500, errorCodeInternal, "保存标注失败")
 		return
 	}
 	writeData(c, 201, h.annotationView(annotation, user.Name))
@@ -87,14 +87,14 @@ func (h *Handler) ListAnnotations(ctx context.Context, c *app.RequestContext) {
 	}
 	annotations, err := database.ListAnnotationsByChapter(ctx, h.db, chapterID)
 	if err != nil {
-		writeError(c, 500, "internal_error", "读取标注失败")
+		writeError(c, 500, errorCodeInternal, "读取标注失败")
 		return
 	}
 	items := make([]annotationView, 0, len(annotations))
 	for _, annotation := range annotations {
 		author, err := database.FindUserByID(ctx, h.db, annotation.UserID)
 		if err != nil {
-			writeError(c, 500, "internal_error", "读取标注失败")
+			writeError(c, 500, errorCodeInternal, "读取标注失败")
 			return
 		}
 		items = append(items, h.annotationView(annotation, author.DisplayName))
@@ -131,7 +131,7 @@ func (h *Handler) SaveWhiteboard(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	if len(request.Data) > 900_000 || !validWhiteboardData(request.Data, h.ids.Encode(chapterID)) {
-		writeError(c, 400, "invalid_input", "白板数据无效或过大")
+		writeError(c, 400, errorCodeInvalidInput, "白板数据无效或过大")
 		return
 	}
 	user := currentUser(c)
@@ -139,7 +139,7 @@ func (h *Handler) SaveWhiteboard(ctx context.Context, c *app.RequestContext) {
 	var err error
 	whiteboard.ID, err = database.UpsertWhiteboard(ctx, h.db, whiteboard)
 	if err != nil {
-		writeError(c, 500, "internal_error", "保存白板失败")
+		writeError(c, 500, errorCodeInternal, "保存白板失败")
 		return
 	}
 	writeData(c, 200, h.whiteboardView(whiteboard, user.Name))
@@ -153,7 +153,7 @@ func (h *Handler) ListWhiteboards(ctx context.Context, c *app.RequestContext) {
 	user := currentUser(c)
 	whiteboards, err := database.ListWhiteboardsByChapterAndUser(ctx, h.db, chapterID, user.ID)
 	if err != nil {
-		writeError(c, 500, "internal_error", "读取白板失败")
+		writeError(c, 500, errorCodeInternal, "读取白板失败")
 		return
 	}
 	items := make([]whiteboardView, 0, len(whiteboards))
@@ -192,7 +192,7 @@ func (h *Handler) CreateComment(ctx context.Context, c *app.RequestContext) {
 	}
 	request.Body = strings.TrimSpace(request.Body)
 	if request.Body == "" || utf8.RuneCountInString(request.Body) > 2000 {
-		writeError(c, 400, "invalid_input", "评论不能为空且最多 2000 字")
+		writeError(c, 400, errorCodeInvalidInput, "评论不能为空且最多 2000 字")
 		return
 	}
 	user := currentUser(c)
@@ -200,7 +200,7 @@ func (h *Handler) CreateComment(ctx context.Context, c *app.RequestContext) {
 	var err error
 	comment.ID, err = database.InsertComment(ctx, h.db, comment)
 	if err != nil {
-		writeError(c, 500, "internal_error", "发表评论失败")
+		writeError(c, 500, errorCodeInternal, "发表评论失败")
 		return
 	}
 	writeData(c, 201, h.commentView(comment, user.Name))
@@ -213,14 +213,14 @@ func (h *Handler) ListComments(ctx context.Context, c *app.RequestContext) {
 	}
 	comments, err := database.ListCommentsByChapter(ctx, h.db, chapterID)
 	if err != nil {
-		writeError(c, 500, "internal_error", "读取评论失败")
+		writeError(c, 500, errorCodeInternal, "读取评论失败")
 		return
 	}
 	items := make([]commentView, 0, len(comments))
 	for _, comment := range comments {
 		author, err := database.FindUserByID(ctx, h.db, comment.UserID)
 		if err != nil {
-			writeError(c, 500, "internal_error", "读取评论失败")
+			writeError(c, 500, errorCodeInternal, "读取评论失败")
 			return
 		}
 		items = append(items, h.commentView(comment, author.DisplayName))
@@ -238,12 +238,12 @@ func (h *Handler) commentView(comment database.Comment, authorName string) comme
 func (h *Handler) existingChapterID(ctx context.Context, c *app.RequestContext) (int64, bool) {
 	chapterID, err := h.ids.Decode(c.Param("id"))
 	if err != nil {
-		writeError(c, 404, "not_found", "章节不存在")
+		writeError(c, 404, errorCodeNotFound, "章节不存在")
 		return 0, false
 	}
 	exists, err := database.ChapterExists(ctx, h.db, chapterID)
 	if err != nil || !exists {
-		writeError(c, 404, "not_found", "章节不存在")
+		writeError(c, 404, errorCodeNotFound, "章节不存在")
 		return 0, false
 	}
 	return chapterID, true

@@ -58,11 +58,11 @@ func (h *Handler) CreateSubject(ctx context.Context, c *app.RequestContext) {
 	}
 	subject, err := h.storeSubject(ctx, currentUser(c).ID, nil, request.Title, request.Description, request.Tags, request.Chapters)
 	if errors.Is(err, errInvalidSubject) {
-		writeError(c, 400, "invalid_input", "请检查科目、标签和章节内容")
+		writeError(c, 400, errorCodeInvalidInput, "请检查科目、标签和章节内容")
 		return
 	}
 	if err != nil {
-		writeError(c, 500, "internal_error", "创建科目失败")
+		writeError(c, 500, errorCodeInternal, "创建科目失败")
 		return
 	}
 	writeData(c, 201, subject)
@@ -81,16 +81,16 @@ func (h *Handler) ImportSubject(ctx context.Context, c *app.RequestContext) {
 	}
 	request.ExternalID = strings.TrimSpace(request.ExternalID)
 	if request.ExternalID == "" || utf8.RuneCountInString(request.ExternalID) > 160 {
-		writeError(c, 400, "invalid_input", "external_id 不能为空且最多 160 字")
+		writeError(c, 400, errorCodeInvalidInput, "external_id 不能为空且最多 160 字")
 		return
 	}
 	subject, err := h.storeSubject(ctx, currentUser(c).ID, &request.ExternalID, request.Title, request.Description, request.Tags, request.Chapters)
 	if errors.Is(err, errInvalidSubject) {
-		writeError(c, 400, "invalid_input", "导入章节必须提供唯一 external_id，并检查科目、标签和章节内容")
+		writeError(c, 400, errorCodeInvalidInput, "导入章节必须提供唯一 external_id，并检查科目、标签和章节内容")
 		return
 	}
 	if err != nil {
-		writeError(c, 500, "internal_error", "导入科目失败")
+		writeError(c, 500, errorCodeInternal, "导入科目失败")
 		return
 	}
 	writeData(c, 200, subject)
@@ -147,14 +147,14 @@ func (h *Handler) storeSubject(ctx context.Context, ownerID int64, externalID *s
 func (h *Handler) ListSubjects(ctx context.Context, c *app.RequestContext) {
 	subjects, err := database.ListSubjects(ctx, h.db)
 	if err != nil {
-		writeError(c, 500, "internal_error", "读取科目失败")
+		writeError(c, 500, errorCodeInternal, "读取科目失败")
 		return
 	}
 	views := make([]subjectView, 0, len(subjects))
 	for _, subject := range subjects {
 		view, err := h.subjectView(ctx, subject, false)
 		if err != nil {
-			writeError(c, 500, "internal_error", "读取科目失败")
+			writeError(c, 500, errorCodeInternal, "读取科目失败")
 			return
 		}
 		views = append(views, view)
@@ -165,12 +165,12 @@ func (h *Handler) ListSubjects(ctx context.Context, c *app.RequestContext) {
 func (h *Handler) GetSubject(ctx context.Context, c *app.RequestContext) {
 	id, err := h.ids.Decode(c.Param("id"))
 	if err != nil {
-		writeError(c, 400, "invalid_id", "科目 ID 无效")
+		writeError(c, 400, errorCodeInvalidID, "科目 ID 无效")
 		return
 	}
 	subject, err := h.fetchSubject(ctx, id)
 	if err != nil {
-		writeError(c, 404, "not_found", "科目不存在")
+		writeError(c, 404, errorCodeNotFound, "科目不存在")
 		return
 	}
 	writeData(c, 200, subject)
@@ -179,7 +179,7 @@ func (h *Handler) GetSubject(ctx context.Context, c *app.RequestContext) {
 func (h *Handler) UpdateSubject(ctx context.Context, c *app.RequestContext) {
 	subjectID, err := h.ids.Decode(c.Param("id"))
 	if err != nil {
-		writeError(c, 400, "invalid_id", "科目 ID 无效")
+		writeError(c, 400, errorCodeInvalidID, "科目 ID 无效")
 		return
 	}
 	var request struct {
@@ -192,21 +192,21 @@ func (h *Handler) UpdateSubject(ctx context.Context, c *app.RequestContext) {
 	request.Title = strings.TrimSpace(request.Title)
 	request.Description = strings.TrimSpace(request.Description)
 	if request.Title == "" || utf8.RuneCountInString(request.Title) > 200 || utf8.RuneCountInString(request.Description) > 4000 {
-		writeError(c, 400, "invalid_input", "请检查科目标题和简介")
+		writeError(c, 400, errorCodeInvalidInput, "请检查科目标题和简介")
 		return
 	}
 	subject, err := database.UpdateSubjectForOwner(ctx, h.db, subjectID, currentUser(c).ID, request.Title, request.Description)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(c, 404, "not_found", "科目不存在或无权操作")
+		writeError(c, 404, errorCodeNotFound, "科目不存在或无权操作")
 		return
 	}
 	if err != nil {
-		writeError(c, 500, "internal_error", "更新科目失败")
+		writeError(c, 500, errorCodeInternal, "更新科目失败")
 		return
 	}
 	view, err := h.subjectView(ctx, subject, true)
 	if err != nil {
-		writeError(c, 500, "internal_error", "读取科目失败")
+		writeError(c, 500, errorCodeInternal, "读取科目失败")
 		return
 	}
 	writeData(c, 200, view)
@@ -263,7 +263,7 @@ func (h *Handler) chapterView(chapter database.Chapter) chapterView {
 func (h *Handler) CreateChapter(ctx context.Context, c *app.RequestContext) {
 	subjectID, err := h.ids.Decode(c.Param("id"))
 	if err != nil || !h.isSubjectOwner(ctx, subjectID, currentUser(c).ID) {
-		writeError(c, 404, "not_found", "科目不存在或无权操作")
+		writeError(c, 404, errorCodeNotFound, "科目不存在或无权操作")
 		return
 	}
 	var request struct {
@@ -276,46 +276,46 @@ func (h *Handler) CreateChapter(ctx context.Context, c *app.RequestContext) {
 	}
 	request.Title = strings.TrimSpace(request.Title)
 	if request.Title == "" || utf8.RuneCountInString(request.Title) > 200 || utf8.RuneCountInString(request.Content) > 200_000 {
-		writeError(c, 400, "invalid_input", "请检查章节标题和内容")
+		writeError(c, 400, errorCodeInvalidInput, "请检查章节标题和内容")
 		return
 	}
 	var parentID *int64
 	if request.ParentID != nil {
 		decoded, err := h.ids.Decode(*request.ParentID)
 		if err != nil {
-			writeError(c, 400, "invalid_parent", "父章节不属于当前科目")
+			writeError(c, 400, errorCodeInvalidParent, "父章节不属于当前科目")
 			return
 		}
 		exists, err := database.ChapterExistsInSubject(ctx, h.db, decoded, subjectID)
 		if err != nil || !exists {
-			writeError(c, 400, "invalid_parent", "父章节不属于当前科目")
+			writeError(c, 400, errorCodeInvalidParent, "父章节不属于当前科目")
 			return
 		}
 		parentID = &decoded
 	}
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		writeError(c, 500, "internal_error", "创建章节失败")
+		writeError(c, 500, errorCodeInternal, "创建章节失败")
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := database.LockSubjectForUpdate(ctx, tx, subjectID); err != nil {
-		writeError(c, 500, "internal_error", "创建章节失败")
+		writeError(c, 500, errorCodeInternal, "创建章节失败")
 		return
 	}
 	position, err := database.NextChapterPosition(ctx, tx, subjectID)
 	if err != nil {
-		writeError(c, 500, "internal_error", "创建章节失败")
+		writeError(c, 500, errorCodeInternal, "创建章节失败")
 		return
 	}
 	chapter := database.Chapter{SubjectID: subjectID, ParentID: parentID, Position: position, Title: request.Title, Content: request.Content}
 	chapter.ID, err = database.InsertChapter(ctx, tx, chapter)
 	if err != nil {
-		writeError(c, 500, "internal_error", "创建章节失败")
+		writeError(c, 500, errorCodeInternal, "创建章节失败")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
-		writeError(c, 500, "internal_error", "创建章节失败")
+		writeError(c, 500, errorCodeInternal, "创建章节失败")
 		return
 	}
 	chapter.CreatedAt = time.Now().UTC()
@@ -325,7 +325,7 @@ func (h *Handler) CreateChapter(ctx context.Context, c *app.RequestContext) {
 func (h *Handler) UpdateChapter(ctx context.Context, c *app.RequestContext) {
 	chapterID, err := h.ids.Decode(c.Param("id"))
 	if err != nil {
-		writeError(c, 400, "invalid_id", "章节 ID 无效")
+		writeError(c, 400, errorCodeInvalidID, "章节 ID 无效")
 		return
 	}
 	var request struct {
@@ -337,16 +337,16 @@ func (h *Handler) UpdateChapter(ctx context.Context, c *app.RequestContext) {
 	}
 	request.Title = strings.TrimSpace(request.Title)
 	if request.Title == "" || utf8.RuneCountInString(request.Title) > 200 || utf8.RuneCountInString(request.Content) > 200_000 {
-		writeError(c, 400, "invalid_input", "请检查章节标题和内容")
+		writeError(c, 400, errorCodeInvalidInput, "请检查章节标题和内容")
 		return
 	}
 	chapter, err := database.UpdateChapterForOwner(ctx, h.db, chapterID, currentUser(c).ID, request.Title, request.Content)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(c, 404, "not_found", "章节不存在或无权操作")
+		writeError(c, 404, errorCodeNotFound, "章节不存在或无权操作")
 		return
 	}
 	if err != nil {
-		writeError(c, 500, "internal_error", "更新章节失败")
+		writeError(c, 500, errorCodeInternal, "更新章节失败")
 		return
 	}
 	writeData(c, 200, h.chapterView(chapter))
@@ -355,7 +355,7 @@ func (h *Handler) UpdateChapter(ctx context.Context, c *app.RequestContext) {
 func (h *Handler) ReplaceTags(ctx context.Context, c *app.RequestContext) {
 	subjectID, err := h.ids.Decode(c.Param("id"))
 	if err != nil || !h.isSubjectOwner(ctx, subjectID, currentUser(c).ID) {
-		writeError(c, 404, "not_found", "科目不存在或无权操作")
+		writeError(c, 404, errorCodeNotFound, "科目不存在或无权操作")
 		return
 	}
 	var request struct {
@@ -366,27 +366,27 @@ func (h *Handler) ReplaceTags(ctx context.Context, c *app.RequestContext) {
 	}
 	tags, ok := normalizeTags(request.Tags)
 	if !ok {
-		writeError(c, 400, "invalid_input", "标签最多 20 个，每个最多 30 字")
+		writeError(c, 400, errorCodeInvalidInput, "标签最多 20 个，每个最多 30 字")
 		return
 	}
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		writeError(c, 500, "internal_error", "保存标签失败")
+		writeError(c, 500, errorCodeInternal, "保存标签失败")
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := database.DeleteTagsBySubject(ctx, tx, subjectID); err != nil {
-		writeError(c, 500, "internal_error", "保存标签失败")
+		writeError(c, 500, errorCodeInternal, "保存标签失败")
 		return
 	}
 	for _, tag := range tags {
 		if _, err := database.InsertTag(ctx, tx, subjectID, tag); err != nil {
-			writeError(c, 500, "internal_error", "保存标签失败")
+			writeError(c, 500, errorCodeInternal, "保存标签失败")
 			return
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		writeError(c, 500, "internal_error", "保存标签失败")
+		writeError(c, 500, errorCodeInternal, "保存标签失败")
 		return
 	}
 	writeData(c, 200, map[string]any{"tags": tags})

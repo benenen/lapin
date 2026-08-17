@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lapin 课程导入"
+  short_description: "通过 Lapin CLI 安全导入本地 Markdown 课程文档"
+  default_prompt: "Use $lapin to import local Markdown course documents into Lapin."
