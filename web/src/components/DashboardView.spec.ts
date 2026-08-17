@@ -72,7 +72,7 @@ const stubs = {
   Select: { template: '<select />' },
   Tag: { props: ['value'], template: '<span>{{ value }}</span>' },
   RichTextContent: { template: '<div />' },
-  ExcalidrawWhiteboard: { template: '<div data-testid="excalidraw-whiteboard" />' },
+  ExcalidrawWhiteboard: { props: ['active', 'modelValue'], template: '<div data-testid="excalidraw-whiteboard" :data-active="String(active)" :data-revision="modelValue?.anchor?.content_revision || \x27\x27" />' },
   RichTextEditor: {
     props: ['modelValue'],
     emits: ['update:modelValue'],
@@ -212,7 +212,7 @@ describe('DashboardView ownership editing', () => {
 
     const tabLabels = wrapper.findAll('[role="tablist"] button').map((button) => button.text())
     expect(tabLabels).not.toContain('白板')
-    expect(wrapper.find('[data-testid="excalidraw-whiteboard"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('false')
     expect(wrapper.text()).not.toContain('选中')
 
     const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
@@ -220,10 +220,100 @@ describe('DashboardView ownership editing', () => {
     await showButton!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="excalidraw-whiteboard"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('true')
     expect(wrapper.text()).toContain('隐藏白板')
     expect(wrapper.text()).not.toContain('我的白板')
     expect(wrapper.text()).not.toContain('白板内容仅你自己可见')
+
+    const whiteboard = wrapper.get('[data-testid="excalidraw-whiteboard"]')
+    whiteboard.element.setAttribute('data-session-probe', 'preserved')
+    const commentsTab = wrapper.findAll('[role="tablist"] button').find((button) => button.text().includes('讨论'))
+    await commentsTab!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-session-probe')).toBe('preserved')
+
+    const notesTab = wrapper.findAll('[role="tablist"] button').find((button) => button.text().includes('正文与标注'))
+    await notesTab!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-session-probe')).toBe('preserved')
+  })
+
+  it('does not open an empty whiteboard before persisted data finishes loading', async () => {
+    let resolveWhiteboards: (value: never[]) => void = () => {}
+    apiMock.listWhiteboards.mockReturnValueOnce(new Promise<never[]>((resolve) => { resolveWhiteboards = resolve }))
+    const wrapper = mount(DashboardView, {
+      props: { user, subjectId: subject.id },
+      global: { stubs },
+    })
+    await flushPromises()
+
+    const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
+    expect(showButton?.element.disabled).toBe(true)
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('false')
+
+    resolveWhiteboards([])
+    await flushPromises()
+    expect(showButton?.element.disabled).toBe(false)
+  })
+
+  it('allows the whiteboard when an unrelated chapter interaction fails', async () => {
+    apiMock.listComments.mockRejectedValueOnce(new Error('comments unavailable'))
+    const wrapper = mount(DashboardView, {
+      props: { user, subjectId: subject.id },
+      global: { stubs },
+    })
+    await flushPromises()
+
+    const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
+    expect(showButton?.element.disabled).toBe(false)
+  })
+
+  it('offers a retry when persisted whiteboards fail to load', async () => {
+    apiMock.listWhiteboards.mockRejectedValueOnce(new Error('whiteboards unavailable')).mockResolvedValueOnce([])
+    const wrapper = mount(DashboardView, {
+      props: { user, subjectId: subject.id },
+      global: { stubs },
+    })
+    await flushPromises()
+
+    const retry = wrapper.findAll('button').find((button) => button.text() === '重试加载白板')
+    expect(retry).toBeDefined()
+    await retry!.trigger('click')
+    await flushPromises()
+
+    const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
+    expect(showButton?.element.disabled).toBe(false)
+  })
+
+  it('ignores an older response after navigating away and back to the same chapter', async () => {
+    const chapterB = { ...subject.chapters[0], id: 'chapter-b', title: '第二章', position: 1 }
+    apiMock.getSubject.mockResolvedValueOnce({ ...subject, chapters: [subject.chapters[0], chapterB] })
+    let resolveFirstA: (value: unknown[]) => void = () => {}
+    let aRequests = 0
+    apiMock.listWhiteboards.mockImplementation((chapterId: string) => {
+      if (chapterId === 'chapter-id') {
+        aRequests++
+        if (aRequests === 1) return new Promise<unknown[]>((resolve) => { resolveFirstA = resolve })
+        return Promise.resolve([whiteboardRecord('new-revision')])
+      }
+      return Promise.resolve([])
+    })
+    const wrapper = mount(DashboardView, {
+      props: { user, subjectId: subject.id },
+      global: { stubs },
+    })
+    await flushPromises()
+
+    const chapterButtons = () => wrapper.findAll('.chapter-tree-label')
+    await chapterButtons().find((button) => button.text().includes('第二章'))!.trigger('click')
+    await flushPromises()
+    await chapterButtons().find((button) => button.text().includes('旧章节'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-revision')).toBe('new-revision')
+
+    resolveFirstA([whiteboardRecord('old-revision')])
+    await flushPromises()
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-revision')).toBe('new-revision')
   })
 
   it('uses rich-text editors for annotations and discussions', async () => {
@@ -243,3 +333,19 @@ describe('DashboardView ownership editing', () => {
     expect(wrapper.find('.comment-compose textarea:not(.rich-editor)').exists()).toBe(false)
   })
 })
+
+function whiteboardRecord(contentRevision: string) {
+  return {
+    id: `board-${contentRevision}`,
+    chapter_id: 'chapter-id',
+    user_id: user.id,
+    author_name: user.name,
+    updated_at: '2026-08-17T00:00:00Z',
+    data: {
+      version: 3,
+      anchor: { type: 'chapter', id: 'chapter-id', content_revision: contentRevision },
+      space: { width: 960, height: 640, fit: 'contain' },
+      document: { type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} },
+    },
+  }
+}

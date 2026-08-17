@@ -50,8 +50,8 @@ function editBlockMath(latex: string, position: number) {
 <template>
   <div class="rich-text-editor">
     <div v-if="editor" class="rich-text-toolbar" aria-label="正文格式">
-      <Button type="button" icon="pi pi-bold" aria-label="粗体" text size="small" :class="{ active: editor.isActive('bold') }" @click="editor.chain().focus().toggleBold().run()" />
-      <Button type="button" icon="pi pi-italic" aria-label="斜体" text size="small" :class="{ active: editor.isActive('italic') }" @click="editor.chain().focus().toggleItalic().run()" />
+      <Button type="button" label="B" aria-label="粗体" text size="small" :class="['rich-toolbar-bold', { active: editor.isActive('bold') }]" @click="editor.chain().focus().toggleBold().run()" />
+      <Button type="button" label="I" aria-label="斜体" text size="small" :class="['rich-toolbar-italic', { active: editor.isActive('italic') }]" @click="editor.chain().focus().toggleItalic().run()" />
       <Button type="button" label="H2" aria-label="二级标题" text size="small" :class="{ active: editor.isActive('heading', { level: 2 }) }" @click="editor.chain().focus().toggleHeading({ level: 2 }).run()" />
       <Button type="button" icon="pi pi-list" aria-label="无序列表" text size="small" :class="{ active: editor.isActive('bulletList') }" @click="editor.chain().focus().toggleBulletList().run()" />
       <Button type="button" icon="pi pi-sort-numeric-down" aria-label="有序列表" text size="small" :class="{ active: editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()" />

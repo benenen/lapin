@@ -48,9 +48,14 @@ const annotations = ref<Annotation[]>([])
 const annotation = ref({ start_offset: 0, end_offset: 0, quote: '', note: '', color: 'yellow' })
 
 const whiteboards = ref<Whiteboard[]>([])
+const whiteboardsLoaded = ref(false)
+const whiteboardLoading = ref(false)
+const whiteboardLoadError = ref('')
 const whiteboardSaving = ref(false)
 const comments = ref<Comment[]>([])
 const commentBody = ref('')
+let interactionLoadGeneration = 0
+let whiteboardLoadGeneration = 0
 
 const activeChapter = computed(() => selectedSubject.value?.chapters?.find((chapter) => chapter.id === activeChapterId.value) ?? null)
 const ownWhiteboard = computed<PersistedWhiteboardData | null>(() => whiteboards.value.find((board) => board.user_id === props.user.id)?.data ?? null)
@@ -61,26 +66,58 @@ onMounted(() => void openSubject(props.subjectId))
 
 watch(() => props.subjectId, (id) => void openSubject(id))
 
-watch(activeChapterId, async (id) => {
+watch(activeChapterId, (id) => {
   whiteboardVisible.value = false
+  whiteboardsLoaded.value = false
+  whiteboardLoading.value = false
+  whiteboardLoadError.value = ''
   annotations.value = []
   whiteboards.value = []
   comments.value = []
   if (!id) return
-  try {
-    const [nextAnnotations, nextWhiteboards, nextComments] = await Promise.all([
-      api.listAnnotations(id),
-      api.listWhiteboards(id),
-      api.listComments(id),
-    ])
-    if (activeChapterId.value !== id) return
-    annotations.value = nextAnnotations
-    whiteboards.value = nextWhiteboards
-    comments.value = nextComments
-  } catch (caught) {
-    showError(caught)
-  }
+  void loadChapterInteractions(id)
+  void loadWhiteboards(id)
 })
+
+async function loadChapterInteractions(id: string) {
+  const generation = ++interactionLoadGeneration
+  const [annotationsResult, commentsResult] = await Promise.allSettled([
+    api.listAnnotations(id),
+    api.listComments(id),
+  ])
+  if (generation !== interactionLoadGeneration || activeChapterId.value !== id) return
+  if (annotationsResult.status === 'fulfilled') {
+    annotations.value = annotationsResult.value
+  } else {
+    showError(annotationsResult.reason)
+  }
+  if (commentsResult.status === 'fulfilled') {
+    comments.value = commentsResult.value
+  } else {
+    showError(commentsResult.reason)
+  }
+}
+
+async function loadWhiteboards(id: string) {
+  const generation = ++whiteboardLoadGeneration
+  whiteboardVisible.value = false
+  whiteboardsLoaded.value = false
+  whiteboardLoading.value = true
+  whiteboardLoadError.value = ''
+  try {
+    const nextWhiteboards = await api.listWhiteboards(id)
+    if (generation !== whiteboardLoadGeneration || activeChapterId.value !== id) return
+    whiteboards.value = nextWhiteboards
+    whiteboardsLoaded.value = true
+  } catch (caught) {
+    if (generation === whiteboardLoadGeneration && activeChapterId.value === id) {
+      whiteboardLoadError.value = '白板加载失败，请重试'
+      showError(caught)
+    }
+  } finally {
+    if (generation === whiteboardLoadGeneration && activeChapterId.value === id) whiteboardLoading.value = false
+  }
+}
 
 async function openSubject(id: string) {
   loading.value = true
@@ -299,36 +336,45 @@ function setActiveTab(tab: string) {
               </button>
             </div>
 
-            <section v-if="activeTab === 'notes'" class="notes-grid">
+            <section v-show="activeTab === 'notes'" class="notes-grid">
               <div class="chapter-document">
                 <div class="chapter-document-actions">
                   <Button
+                    v-if="whiteboardLoadError"
+                    label="重试加载白板"
+                    icon="pi pi-refresh"
+                    severity="secondary"
+                    outlined
+                    size="small"
+                    :loading="whiteboardLoading"
+                    @click="loadWhiteboards(activeChapter.id)"
+                  />
+                  <Button
+                    v-else
                     :label="whiteboardVisible ? '隐藏白板' : '显示白板'"
                     :icon="whiteboardVisible ? 'pi pi-eye-slash' : 'pi pi-eye'"
                     severity="secondary"
                     outlined
                     size="small"
+                    :loading="whiteboardLoading"
+                    :disabled="!whiteboardsLoaded"
                     @click="whiteboardVisible = !whiteboardVisible"
                   />
                 </div>
-                <template v-if="whiteboardVisible">
-                  <ExcalidrawWhiteboard
-                    :chapter-id="activeChapter.id"
-                    :content="activeChapter.content"
-                    :model-value="ownWhiteboard"
-                    :saving="whiteboardSaving"
-                    @save="saveWhiteboard"
-                  />
-                </template>
-                <template v-else>
-                  <p v-if="!activeChapter.content" class="chapter-content">本章暂无正文。</p>
-                  <RichTextContent v-else :content="activeChapter.content" @selection="captureSelection" />
-                </template>
+                <ExcalidrawWhiteboard
+                  :chapter-id="activeChapter.id"
+                  :content="activeChapter.content"
+                  :active="whiteboardVisible && whiteboardsLoaded"
+                  :model-value="ownWhiteboard"
+                  :saving="whiteboardSaving"
+                  @selection="captureSelection"
+                  @save="saveWhiteboard"
+                />
               </div>
-                <aside class="annotation-panel">
-                  <h3>新建标注</h3>
-                  <blockquote v-if="annotation.quote">“{{ annotation.quote }}”</blockquote>
-                  <RichTextEditor v-model="annotation.note" class="compact-rich-text-editor" />
+              <aside class="annotation-panel">
+                <h3>新建标注</h3>
+                <blockquote v-if="annotation.quote">“{{ annotation.quote }}”</blockquote>
+                <RichTextEditor v-model="annotation.note" class="compact-rich-text-editor" />
                 <div class="annotation-actions">
                   <div class="annotation-colors">
                     <button v-for="color in ['yellow', 'green', 'blue', 'pink']" :key="color" type="button" :class="[color, { active: annotation.color === color }]" @click="annotation.color = color" />
@@ -345,7 +391,7 @@ function setActiveTab(tab: string) {
               </aside>
             </section>
 
-            <section v-else class="comments-panel">
+            <section v-show="activeTab === 'comments'" class="comments-panel">
               <div class="comment-compose">
                 <Avatar :label="user.name.slice(0, 1)" shape="circle" />
                 <RichTextEditor v-model="commentBody" class="compact-rich-text-editor" />

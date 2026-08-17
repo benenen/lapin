@@ -57,6 +57,11 @@ export function viewportScale(viewportWidth: number, referenceWidth = WHITEBOARD
   return Math.min(1, viewportWidth / referenceWidth)
 }
 
+export function whiteboardReferenceHeight(contentHeight: number, minimumHeight = WHITEBOARD_MIN_HEIGHT): number {
+  const measuredHeight = Number.isFinite(contentHeight) && contentHeight > 0 ? contentHeight : 0
+  return Math.max(minimumHeight, measuredHeight + 80)
+}
+
 export function excalidrawViewport(viewportWidth: number, referenceWidth = WHITEBOARD_WIDTH, topInset = 0) {
   const zoom = viewportScale(viewportWidth, referenceWidth)
   return {

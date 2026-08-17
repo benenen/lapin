@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { chapterContentRevision, excalidrawViewport, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, isSupportedExcalidrawElement, viewportScale } from './whiteboard'
+import { chapterContentRevision, excalidrawViewport, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, isSupportedExcalidrawElement, viewportScale, whiteboardReferenceHeight } from './whiteboard'
 
 describe('anchored whiteboard contract', () => {
   it('keeps one canonical coordinate space while the viewport resizes', () => {
@@ -20,6 +20,12 @@ describe('anchored whiteboard contract', () => {
       scrollX: 0,
       scrollY: 64,
     })
+  })
+
+  it('keeps the canvas tall enough for reflowed chapter content', () => {
+    expect(whiteboardReferenceHeight(900, 640)).toBe(980)
+    expect(whiteboardReferenceHeight(100, 1200)).toBe(1200)
+    expect(whiteboardReferenceHeight(Number.NaN, 640)).toBe(640)
   })
 
   it('places the transparent scene directly on the chapter by default', () => {

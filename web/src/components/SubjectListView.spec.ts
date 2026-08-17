@@ -47,7 +47,10 @@ describe('SubjectListView', () => {
     })
     await flushPromises()
 
-    const link = wrapper.get('a.subject-card')
+    expect(wrapper.find('.home-course-sidebar').exists()).toBe(true)
+    expect(wrapper.get('.home-dashboard-main').text()).toBe('')
+
+    const link = wrapper.get('a.home-course-item')
     expect(link.attributes('href')).toBe('/subjects/subject-hash')
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toContain('noopener')

@@ -4,8 +4,8 @@ import {
 } from '@excalidraw/excalidraw'
 import type { ExcalidrawImperativeAPI, ExcalidrawInitialDataState, NormalizedZoomValue } from '@excalidraw/excalidraw/types'
 import { createElement, Fragment, useLayoutEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { createPortal } from 'react-dom'
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { createPortal, flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 
 import type { WhiteboardData } from './types'
@@ -34,7 +34,20 @@ interface MountOptions {
 }
 
 const DEFAULT_TOOLBAR_X = -80
-const DEFAULT_TOOLBAR_Y = -52
+const DEFAULT_TOOLBAR_Y = -73
+
+function toolbarIcon(...paths: string[]): ReactNode {
+  return createElement('span', { className: 'lapin-toolbar-icon', 'aria-hidden': 'true' },
+    createElement('svg', {
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 2,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    }, paths.map((path) => createElement('path', { key: path, d: path }))),
+  )
+}
 
 function historyShortcutModifiers(): { ctrlKey: boolean; metaKey: boolean } {
   const platform = typeof navigator === 'undefined' ? '' : `${navigator.platform} ${navigator.userAgent}`
@@ -102,7 +115,7 @@ function ToolbarExtension({ host, undo, redo, clear, save }: ToolbarExtensionPro
   }
 
   if (!target) return null
-  const button = (key: string, label: string, icon: string, action: () => void, className = '') => createElement('button', {
+  const button = (key: string, label: string, icon: ReactNode, action: () => void, className = '') => createElement('button', {
     key,
     type: 'button',
     className: `ToolIcon_type_button ToolIcon_size_medium ToolIcon lapin-excalidraw-action ${className}`.trim(),
@@ -111,15 +124,15 @@ function ToolbarExtension({ host, undo, redo, clear, save }: ToolbarExtensionPro
     'data-prevent-outside-click': 'true',
     onClick: action,
     onPointerDown: className.includes('drag-handle') ? startDragging : undefined,
-  }, createElement('span', { className: 'lapin-toolbar-icon', 'aria-hidden': 'true' }, icon))
+  }, icon)
 
   return createPortal(createElement(Fragment, null,
     createElement('div', { key: 'divider', className: 'App-toolbar__divider' }),
-    button('undo', '撤销', '↶', undo),
-    button('redo', '重做', '↷', redo),
-    button('clear', '清空白板', '⌫', clear),
-    button('save', '保存白板', '✓', save, 'lapin-save-whiteboard'),
-    button('drag', '拖动白板工具栏', '⠿', () => {}, 'lapin-toolbar-drag-handle'),
+    button('undo', '撤销', toolbarIcon('M9 7H5V3', 'M5 7l3.5-3.5', 'M5.5 7H13a6 6 0 1 1-5.3 8.8'), undo),
+    button('redo', '重做', toolbarIcon('M15 7h4V3', 'M19 7l-3.5-3.5', 'M18.5 7H11a6 6 0 1 0 5.3 8.8'), redo),
+    button('clear', '清空白板', toolbarIcon('M4 7h16', 'M9 7V4h6v3', 'M7 7l1 13h8l1-13', 'M10 11v5', 'M14 11v5'), clear),
+    button('save', '保存白板', toolbarIcon('M5 12.5l4 4L19 7'), save, 'lapin-save-whiteboard'),
+    button('drag', '拖动白板工具栏', toolbarIcon('M8 6h.01', 'M8 12h.01', 'M8 18h.01', 'M16 6h.01', 'M16 12h.01', 'M16 18h.01'), () => {}, 'lapin-toolbar-drag-handle'),
   ), target)
 }
 
@@ -139,8 +152,26 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
     event.preventDefault()
     event.stopImmediatePropagation()
   }
+  let scrollRefreshFrame: number | null = null
+  const refreshViewportOffset = () => {
+    if (element.getAttribute('aria-hidden') === 'true' || scrollRefreshFrame !== null) return
+    scrollRefreshFrame = requestAnimationFrame(() => {
+      scrollRefreshFrame = null
+      api?.refresh()
+    })
+  }
+  const refreshViewportOffsetBeforePointer = () => {
+    if (scrollRefreshFrame !== null) {
+      cancelAnimationFrame(scrollRefreshFrame)
+      scrollRefreshFrame = null
+    }
+    // Excalidraw caches DOM offsets. Commit its refresh before React's bubble-phase pointer handler.
+    if (api) flushSync(() => api?.refresh())
+  }
   element.addEventListener('wheel', preventWheel, { capture: true, passive: false })
   element.addEventListener('touchmove', preventPinch, { capture: true, passive: false })
+  element.addEventListener('pointerdown', refreshViewportOffsetBeforePointer, { capture: true })
+  window.addEventListener('scroll', refreshViewportOffset, { capture: true, passive: true })
 
   const initialData = loadExcalidrawScene<ExcalidrawInitialDataState>(() => ({
     elements: options.data?.document.elements as ExcalidrawInitialDataState['elements'],
@@ -198,7 +229,7 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
     root.render(createElement(Excalidraw, {
       initialData,
       autoFocus: false,
-      detectScroll: false,
+      detectScroll: true,
       handleKeyboardGlobally: false,
       zenModeEnabled: true,
       renderTopRightUI,
@@ -240,8 +271,12 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
   return {
     destroy: () => {
       api = null
+      if (scrollRefreshFrame !== null) cancelAnimationFrame(scrollRefreshFrame)
+      scrollRefreshFrame = null
       element.removeEventListener('wheel', preventWheel, { capture: true })
       element.removeEventListener('touchmove', preventPinch, { capture: true })
+      element.removeEventListener('pointerdown', refreshViewportOffsetBeforePointer, { capture: true })
+      window.removeEventListener('scroll', refreshViewportOffset, { capture: true })
       root.unmount()
     },
     isReady: () => api !== null && !loadFailed,

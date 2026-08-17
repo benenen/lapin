@@ -64,21 +64,24 @@ button, input, textarea { font: inherit; }
 
 .workspace-grid { min-height: calc(100vh - 4.8rem); display: grid; grid-template-columns: 18rem 1fr; }
 .workspace-grid.detail-only { grid-template-columns: minmax(0, 1fr); }
-.subject-library { width: min(76rem, calc(100% - 2.5rem)); margin: 0 auto; padding: clamp(2.5rem, 6vw, 5rem) 0; }
-.library-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; margin-bottom: 2rem; }
-.library-heading h1 { margin: .35rem 0; color: #23473a; font-family: Georgia, serif; font-size: clamp(2.4rem, 5vw, 4.6rem); font-weight: 500; }
-.library-heading p { margin: 0; color: #748078; }
-.library-loading { padding: 4rem 0; text-align: center; }
-.subject-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(19rem, 100%), 1fr)); gap: 1rem; }
-.subject-card { min-height: 13rem; display: flex; align-items: flex-start; gap: 1rem; padding: 1.35rem; border: 1px solid #dbdcd3; border-radius: 14px; color: #2e3c36; background: #fbfaf6; box-shadow: 0 10px 30px rgba(50, 60, 50, .05); text-decoration: none; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
-.subject-card:hover { transform: translateY(-3px); border-color: #b7c2b7; box-shadow: 0 18px 40px rgba(50, 60, 50, .1); }
-.subject-card:focus-visible { outline: 3px solid #d8b35b; outline-offset: 3px; }
-.subject-card-content { min-width: 0; flex: 1; display: grid; align-content: start; gap: .7rem; }
-.subject-card-content > strong { overflow: hidden; color: #23473a; font-family: Georgia, serif; font-size: 1.45rem; text-overflow: ellipsis; white-space: nowrap; }
-.subject-card-content > small { min-height: 3.2rem; overflow: hidden; color: #727d75; line-height: 1.6; }
-.subject-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; color: #899188; font-size: .78rem; }
-.empty-library { min-height: 24rem; display: grid; place-items: center; align-content: center; gap: .6rem; padding: 2rem; border: 1px dashed #cfd2c9; border-radius: 16px; color: #778078; text-align: center; background: rgba(255, 255, 255, .34); }
-.empty-library i { font-size: 2.4rem; }.empty-library h2, .empty-library p { margin: 0; }
+.home-dashboard { min-height: calc(100vh - 4.8rem); display: grid; grid-template-columns: minmax(18rem, 20rem) minmax(0, 1fr); background: #f5f3ec; }
+.home-course-sidebar { padding: 1rem; border-right: 1px solid #d8dcd7; background: #fff; }
+.home-course-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .35rem .25rem 1rem; border-bottom: 1px solid #e2e5e1; }
+.home-course-heading h1 { margin: .15rem 0 0; color: #263b33; font-size: 1rem; line-height: 1.2; }
+.home-course-loading { padding: 2rem .5rem; text-align: center; }
+.home-course-list { display: grid; gap: .2rem; padding-top: .65rem; }
+.home-course-item { display: flex; align-items: center; gap: .65rem; padding: .55rem .6rem; border-radius: 7px; color: #293b34; text-decoration: none; }
+.home-course-item:hover { background: #f1f3f0; }
+.home-course-item:focus-visible { outline: 2px solid #d1a844; outline-offset: 1px; }
+.home-course-item .subject-icon { width: 2rem; height: 2rem; border-radius: 6px; font-size: 1rem; }
+.home-course-copy { min-width: 0; flex: 1; display: grid; gap: .12rem; }
+.home-course-copy strong, .home-course-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-course-copy strong { font-size: .9rem; }.home-course-copy small { color: #778079; font-size: .72rem; }
+.home-course-item > .pi { color: #929a94; font-size: .75rem; }
+.home-course-empty { display: grid; gap: .55rem; margin-top: .8rem; padding: 1rem; border: 1px dashed #d3d8d3; border-radius: 8px; color: #68736c; }
+.home-course-empty small { line-height: 1.45; }
+.home-course-empty .p-button { justify-self: start; }
+.home-dashboard-main { min-width: 0; background: #f7f6f2; }
 .subject-sidebar { padding: 1.6rem 1rem; border-right: 1px solid #d9d8d0; background: #eae8df; }
 .sidebar-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 .4rem 1.2rem; }
 .sidebar-heading h2 { margin: .25rem 0 0; font-family: Georgia, serif; font-size: 1.55rem; }
@@ -144,8 +147,10 @@ button, input, textarea { font: inherit; }
 .anchored-whiteboard { position: relative; }
 .whiteboard-viewport { width: 100%; overflow: visible; background: transparent; }
 .whiteboard-stage { position: relative; overflow: visible; margin: 0; background: transparent; }
-.whiteboard-content-layer { position: absolute; z-index: 1; top: 0; left: 0; overflow: hidden; transform-origin: 0 0; pointer-events: none; }
-.excalidraw-host { position: absolute; z-index: 2; inset: 0; touch-action: none; }
+.whiteboard-content-layer { position: absolute; z-index: 1; top: 0; left: 0; overflow: hidden; transform-origin: 0 0; pointer-events: auto; }
+.whiteboard-stage.is-active .whiteboard-content-layer { pointer-events: none; }
+.excalidraw-host { position: absolute; z-index: 2; inset: 0; visibility: hidden; pointer-events: none; touch-action: none; }
+.whiteboard-stage.is-active.is-interactive .excalidraw-host { visibility: visible; pointer-events: auto; }
 .excalidraw-host .excalidraw { overflow: visible !important; }
 .excalidraw-host .excalidraw, .excalidraw-host .excalidraw .App-menu_top { background: transparent !important; }
 .excalidraw-host .main-menu-trigger { display: none !important; }
@@ -153,8 +158,8 @@ button, input, textarea { font: inherit; }
 .excalidraw-host .App-bottom-bar, .excalidraw-host .mobile-misc-tools-container, .excalidraw-host .HintViewer { display: none !important; }
 .excalidraw-host .ToolIcon:has([data-testid="toolbar-hand"]) { display: none !important; }
 .excalidraw-host .App-toolbar-container[data-lapin-draggable-toolbar="true"] { position: relative; z-index: 5; width: max-content; max-width: none; }
-.excalidraw-host .lapin-excalidraw-action { display: inline-grid; place-items: center; }
-.excalidraw-host .lapin-toolbar-icon { font-size: 1rem; font-weight: 750; line-height: 1; }
+.excalidraw-host .lapin-excalidraw-action { display: inline-flex; flex: 0 0 36px; align-items: center; justify-content: center; width: 36px; height: 36px; }
+.excalidraw-host .lapin-toolbar-icon, .excalidraw-host .lapin-toolbar-icon svg { display: block; width: 20px; height: 20px; }
 .excalidraw-host .lapin-toolbar-drag-handle { cursor: grab; touch-action: none; }
 .excalidraw-host .lapin-toolbar-drag-handle:active { cursor: grabbing; }
 .chapter-document-actions { display: flex; justify-content: flex-end; margin-bottom: .8rem; }
@@ -178,9 +183,14 @@ button, input, textarea { font: inherit; }
 
 .rich-text-editor { overflow: hidden; border: 1px solid #cbd0ca; border-radius: 8px; background: #fff; }
 .rich-text-editor:focus-within { border-color: #527a6c; box-shadow: 0 0 0 1px #527a6c; }
-.rich-text-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem; padding: .3rem .45rem; border-bottom: 1px solid #dfe2dc; background: #f7f6f0; }
+.rich-text-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: .15rem; overflow-x: auto; overflow-y: hidden; padding: .3rem .45rem; border-bottom: 1px solid #dfe2dc; background: #f7f6f0; scrollbar-width: none; }
+.rich-text-toolbar::-webkit-scrollbar { display: none; }
+.rich-text-toolbar > button { flex: 0 0 auto; }
 .rich-text-toolbar .active { color: #fff; background: #315b4d; }
-.rich-text-toolbar .toolbar-spacer { flex: 1; }
+.rich-text-toolbar .toolbar-spacer { flex: 1 0 .35rem; min-width: .35rem; }
+.rich-text-toolbar .rich-toolbar-bold, .rich-text-toolbar .rich-toolbar-italic { width: 32px; height: 33px; padding: 0; }
+.rich-text-toolbar .rich-toolbar-bold .p-button-label { font-weight: 850; }
+.rich-text-toolbar .rich-toolbar-italic .p-button-label { font-family: Georgia, serif; font-style: italic; font-weight: 700; }
 .rich-text-editor .tiptap { min-height: 12rem; padding: .8rem 1rem; outline: none; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; line-height: 1.7; }
 .compact-rich-text-editor .tiptap { min-height: 6rem; }
 .rich-text-editor .tiptap > :first-child { margin-top: 0; }
@@ -203,7 +213,7 @@ button, input, textarea { font: inherit; }
 @media (max-width: 680px) {
   .topbar { padding: 0 .7rem; }.topbar-actions > .p-button:first-child, .user-chip div { display: none; }
   .workspace-grid { display: block; }
-  .subject-library { width: min(100% - 1.4rem, 76rem); padding: 2rem 0; }.library-heading { align-items: flex-start; flex-direction: column; gap: 1rem; }
+  .home-dashboard { display: block; }.home-course-sidebar { max-height: 45vh; overflow: auto; border-right: 0; border-bottom: 1px solid #d8dcd7; }.home-dashboard-main { min-height: 55vh; }
   .subject-sidebar { display: flex; gap: .35rem; overflow-x: auto; padding: .6rem; border-right: 0; border-bottom: 1px solid #d9d8d0; }
   .sidebar-heading { flex: 0 0 auto; padding: 0; }.subject-item { width: auto; flex: 0 0 auto; margin: 0; }
   .subject-main { width: 100%; }.subject-header { min-height: auto; align-items: flex-start; padding: 1.5rem; }.subject-header h1 { font-size: 2rem; }

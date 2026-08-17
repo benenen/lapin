@@ -5,7 +5,6 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
-import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
 import { api } from '../api'
@@ -116,37 +115,35 @@ function showError(caught: unknown) {
 
     <Message v-if="error" class="global-message" severity="error" :closable="false">{{ error }}</Message>
 
-    <main class="subject-library">
-      <header class="library-heading">
-        <div><span class="eyebrow">LIBRARY</span><h1>我的科目</h1><p>选择一门科目，在新的标签页中专注学习。</p></div>
-        <Button label="新建科目" icon="pi pi-plus" @click="createDialog = true" />
-      </header>
+    <main class="home-dashboard">
+      <aside class="home-course-sidebar">
+        <header class="home-course-heading">
+          <div><span class="eyebrow">COURSES</span><h1>课程</h1></div>
+          <Button label="新建" icon="pi pi-plus" size="small" @click="createDialog = true" />
+        </header>
 
-      <div v-if="loading" class="library-loading muted">正在读取科目…</div>
-      <div v-else-if="subjects.length > 0" class="subject-grid">
-        <a
-          v-for="subject in subjects"
-          :key="subject.id"
-          class="subject-card"
-          :href="`/subjects/${encodeURIComponent(subject.id)}`"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span class="subject-icon">{{ subject.title.slice(0, 1) }}</span>
-          <span class="subject-card-content">
-            <span class="tag-row"><Tag v-for="tag in subject.tags" :key="tag" :value="tag" severity="secondary" /></span>
-            <strong>{{ subject.title }}</strong>
-            <small>{{ subject.description || '这个科目还没有简介。' }}</small>
-            <span class="subject-card-footer">{{ subject.owner_name }} <i class="pi pi-external-link" aria-hidden="true" /></span>
-          </span>
-        </a>
-      </div>
-      <div v-else class="empty-library">
-        <i class="pi pi-book" />
-        <h2>还没有科目</h2>
-        <p>创建第一门科目，或者通过 OpenAPI 导入学习内容。</p>
-        <Button label="创建第一个科目" @click="createDialog = true" />
-      </div>
+        <div v-if="loading" class="home-course-loading muted">正在读取课程…</div>
+        <nav v-else-if="subjects.length > 0" class="home-course-list" aria-label="课程列表">
+          <a
+            v-for="subject in subjects"
+            :key="subject.id"
+            class="home-course-item"
+            :href="`/subjects/${encodeURIComponent(subject.id)}`"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="subject-icon">{{ subject.title.slice(0, 1) }}</span>
+            <span class="home-course-copy"><strong>{{ subject.title }}</strong><small>{{ subject.owner_name }}</small></span>
+            <i class="pi pi-external-link" aria-hidden="true" />
+          </a>
+        </nav>
+        <div v-else class="home-course-empty">
+          <strong>还没有课程</strong>
+          <small>新建课程，或通过 OpenAPI 导入。</small>
+          <Button label="新建课程" size="small" @click="createDialog = true" />
+        </div>
+      </aside>
+      <section class="home-dashboard-main" aria-label="首页内容" />
     </main>
 
     <Dialog v-model:visible="createDialog" modal header="新建科目" :style="{ width: 'min(36rem, 94vw)' }">
