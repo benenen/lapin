@@ -446,6 +446,69 @@ describe('DashboardView ownership editing', () => {
     expect(wrapper.get('.annotation-composer button[data-color="yellow"]').classes()).toContain('active')
   })
 
+  it('leaves selection mode when the whiteboard opens from the selecting bar', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('selection', {
+      start_offset: 0,
+      end_offset: 3,
+      quote: '上下文',
+    })
+    await flushPromises()
+    await wrapper.get('.annotation-composer .rich-editor').setValue('<p>写了一半的笔记</p>')
+    expect(wrapper.get('.chapter-toolbar').classes()).toContain('is-selecting')
+
+    await wrapper.get('.chapter-toolbar button[data-action="whiteboard"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('true')
+    expect(wrapper.get('.chapter-toolbar').classes()).toContain('is-whiteboard')
+    expect(wrapper.find('.chapter-toolbar-quote').exists()).toBe(false)
+    expect(wrapper.find('.chapter-toolbar button[data-action="save-whiteboard"]').exists()).toBe(true)
+    expect(wrapper.find('.chapter-toolbar button[data-action="undo"]').exists()).toBe(true)
+    expect(wrapper.get('.chapter-toolbar button[data-action="whiteboard"]').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('keeps the drafted note when the whiteboard opens from the selecting bar', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('selection', {
+      start_offset: 0,
+      end_offset: 3,
+      quote: '上下文',
+    })
+    await flushPromises()
+    await wrapper.get('.chapter-toolbar button[data-color="green"]').trigger('click')
+    await wrapper.get('.annotation-composer .rich-editor').setValue('<p>写了一半的笔记</p>')
+
+    await wrapper.get('.chapter-toolbar button[data-action="whiteboard"]').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.get('.annotation-composer .rich-editor').element as HTMLTextAreaElement).value).toBe('<p>写了一半的笔记</p>')
+    expect(wrapper.get('.annotation-composer button[data-color="green"]').classes()).toContain('active')
+  })
+
+  it('leaves the draft untouched when the whiteboard is closed again', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await wrapper.get('.chapter-toolbar button[data-action="whiteboard"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.chapter-toolbar').classes()).toContain('is-whiteboard')
+    await wrapper.get('.annotation-composer button[data-color="green"]').trigger('click')
+    await wrapper.get('.annotation-composer .rich-editor').setValue('<p>白板旁写的笔记</p>')
+
+    await wrapper.get('.chapter-toolbar button[data-action="whiteboard"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('false')
+    expect(wrapper.get('.chapter-toolbar').classes()).toContain('is-reading')
+    expect((wrapper.get('.annotation-composer .rich-editor').element as HTMLTextAreaElement).value).toBe('<p>白板旁写的笔记</p>')
+    expect(wrapper.get('.annotation-composer button[data-color="green"]').classes()).toContain('active')
+  })
+
   it('clears a pending selection and the highlight when the reader changes chapter', async () => {
     apiMock.getSubject.mockResolvedValueOnce(twoChapterSubject())
     const wrapper = mountDashboard()

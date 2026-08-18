@@ -237,6 +237,16 @@ function resetAnnotationDraft() {
   annotation.value = { start_offset: 0, end_offset: 0, quote: '', note: '', color: 'yellow' }
 }
 
+// `toolbarMode` ranks selecting above whiteboard, so a surviving quote would keep the
+// selection cluster on screen while the board is live — 保存白板 / 撤销 / 重做 / 清空 all
+// unreachable and 白板 still reporting itself closed. Opening therefore drops the pending
+// selection; it goes through cancelSelection, so the half-written note and the chosen
+// colour survive. Closing leaves the draft alone.
+function toggleWhiteboard() {
+  whiteboardVisible.value = !whiteboardVisible.value
+  if (whiteboardVisible.value) cancelSelection()
+}
+
 function focusAnnotation(id: string) {
   activeAnnotationId.value = id
   openSidebar('annotations')
@@ -383,7 +393,7 @@ function showError(caught: unknown) {
                   :whiteboard-loading="whiteboardLoading"
                   :whiteboard-error="Boolean(whiteboardLoadError)"
                   :saving="whiteboardSaving"
-                  @toggle-whiteboard="whiteboardVisible = !whiteboardVisible"
+                  @toggle-whiteboard="toggleWhiteboard"
                   @retry-whiteboard="loadWhiteboards(activeChapter.id)"
                   @open-sidebar="openSidebar"
                   @pick-color="annotation.color = $event"
