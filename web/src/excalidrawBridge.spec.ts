@@ -35,12 +35,19 @@ describe('Excalidraw bridge', () => {
     expect(errors[0]?.message).toBe('invalid scene')
   })
 
-  it('extends the built-in toolbar instead of rendering a second toolbar', () => {
+  it('leaves only the drag handle in the built-in toolbar', () => {
     const host = document.createElement('div')
     mountExcalidraw(host, { width: 960, height: 640 })
 
     const excalidrawElement = reactRoot.render.mock.calls[0]?.[0]
     expect(excalidrawElement?.props.renderTopRightUI).toBeTypeOf('function')
+
+    const extension = excalidrawElement.props.renderTopRightUI()
+    expect(extension.props.host).toBe(host)
+    expect(extension.props.undo).toBeUndefined()
+    expect(extension.props.redo).toBeUndefined()
+    expect(extension.props.clear).toBeUndefined()
+    expect(extension.props.save).toBeUndefined()
   })
 
   it('keeps the canvas camera locked while allowing document wheel scrolling', async () => {

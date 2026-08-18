@@ -57,13 +57,9 @@ function historyShortcutModifiers(): { ctrlKey: boolean; metaKey: boolean } {
 
 interface ToolbarExtensionProps {
   host: HTMLElement
-  undo: () => void
-  redo: () => void
-  clear: () => void
-  save: () => void
 }
 
-function ToolbarExtension({ host, undo, redo, clear, save }: ToolbarExtensionProps) {
+function ToolbarExtension({ host }: ToolbarExtensionProps) {
   const [target, setTarget] = useState<Element | null>(null)
   const offset = useRef({ x: DEFAULT_TOOLBAR_X, y: DEFAULT_TOOLBAR_Y })
   const dragCleanup = useRef<(() => void) | null>(null)
@@ -128,10 +124,6 @@ function ToolbarExtension({ host, undo, redo, clear, save }: ToolbarExtensionPro
 
   return createPortal(createElement(Fragment, null,
     createElement('div', { key: 'divider', className: 'App-toolbar__divider' }),
-    button('undo', '撤销', toolbarIcon('M9 7H5V3', 'M5 7l3.5-3.5', 'M5.5 7H13a6 6 0 1 1-5.3 8.8'), undo),
-    button('redo', '重做', toolbarIcon('M15 7h4V3', 'M19 7l-3.5-3.5', 'M18.5 7H11a6 6 0 1 0 5.3 8.8'), redo),
-    button('clear', '清空白板', toolbarIcon('M4 7h16', 'M9 7V4h6v3', 'M7 7l1 13h8l1-13', 'M10 11v5', 'M14 11v5'), clear),
-    button('save', '保存白板', toolbarIcon('M5 12.5l4 4L19 7'), save, 'lapin-save-whiteboard'),
     button('drag', '拖动白板工具栏', toolbarIcon('M8 6h.01', 'M8 12h.01', 'M8 18h.01', 'M16 6h.01', 'M16 12h.01', 'M16 18h.01'), () => {}, 'lapin-toolbar-drag-handle'),
   ), target)
 }
@@ -227,13 +219,7 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
     if (api) api.updateScene({ elements: [], captureUpdate: CaptureUpdateAction.IMMEDIATELY })
   }
 
-  const renderTopRightUI = () => createElement(ToolbarExtension, {
-    host: element,
-    undo: () => triggerHistoryShortcut(false),
-    redo: () => triggerHistoryShortcut(true),
-    clear,
-    save: () => options.onSave?.(),
-  })
+  const renderTopRightUI = () => createElement(ToolbarExtension, { host: element })
 
   if (!loadFailed) {
     root.render(createElement(Excalidraw, {
