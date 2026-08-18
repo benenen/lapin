@@ -75,6 +75,31 @@ describe('AnnotationSidebar', () => {
     expect(wrapper.get('.annotation-sidebar-handle').attributes('aria-expanded')).toBe('false')
   })
 
+  it('completes the tablist contract for assistive technology', async () => {
+    const wrapper = mountSidebar()
+
+    const annotationsTab = wrapper.get('button[data-tab="annotations"]')
+    const commentsTab = wrapper.get('button[data-tab="comments"]')
+    expect(wrapper.get('[role="tablist"]').attributes('aria-label')).toBe('标注与讨论')
+    expect(annotationsTab.attributes('role')).toBe('tab')
+    expect(commentsTab.attributes('role')).toBe('tab')
+    expect(annotationsTab.attributes('aria-selected')).toBe('true')
+    expect(commentsTab.attributes('aria-selected')).toBe('false')
+
+    const panel = wrapper.get('.annotation-sidebar-panel')
+    expect(panel.attributes('role')).toBe('tabpanel')
+    expect(panel.attributes('aria-labelledby')).toBe(annotationsTab.attributes('id'))
+    expect(annotationsTab.attributes('aria-controls')).toBe(panel.attributes('id'))
+
+    await wrapper.setProps({ tab: 'comments' })
+
+    const commentsPanel = wrapper.get('.annotation-sidebar-panel')
+    expect(wrapper.get('button[data-tab="comments"]').attributes('aria-selected')).toBe('true')
+    expect(commentsPanel.attributes('role')).toBe('tabpanel')
+    expect(commentsPanel.attributes('aria-labelledby')).toBe(commentsTab.attributes('id'))
+    expect(wrapper.get('button[data-tab="comments"]').attributes('aria-controls')).toBe(commentsPanel.attributes('id'))
+  })
+
   it('switches between the annotation and discussion tabs', async () => {
     const wrapper = mountSidebar()
 

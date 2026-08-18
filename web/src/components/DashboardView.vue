@@ -26,7 +26,9 @@ const emit = defineEmits<{ logout: [] }>()
 const selectedSubject = ref<Subject | null>(null)
 const activeChapterId = ref('')
 const whiteboardVisible = ref(false)
-const sidebarOpen = ref(true)
+// 正文默认全宽：the sidebar only appears once the reader asks for it, by composing an
+// annotation, clicking a mark, or opening a tab from the toolbar.
+const sidebarOpen = ref(false)
 const sidebarTab = ref<'annotations' | 'comments'>('annotations')
 const activeAnnotationId = ref('')
 const whiteboardRef = ref<InstanceType<typeof ExcalidrawWhiteboard> | null>(null)
@@ -266,23 +268,32 @@ async function saveAnnotation() {
   }
 }
 
+// Every write re-checks the chapter after its await: a response that lands once the reader has
+// moved on must not splice chapter A's record into chapter B's list, nor leave chapter A's
+// saving state on a bar that now describes chapter B.
 async function saveWhiteboard(data: WhiteboardData) {
-  if (!activeChapter.value) return
+  const chapter = activeChapter.value
+  if (!chapter) return
   whiteboardSaving.value = true
   try {
-    const saved = await api.saveWhiteboard(activeChapter.value.id, data)
+    const saved = await api.saveWhiteboard(chapter.id, data)
+    if (activeChapterId.value !== chapter.id) return
     whiteboards.value = [saved, ...whiteboards.value.filter((board) => board.user_id !== props.user.id)]
   } catch (caught) {
     showError(caught)
   } finally {
+    // The flag is cleared unconditionally: a save that outlives its chapter must never leave the
+    // new chapter's 保存白板 button stuck in the disabled saving state.
     whiteboardSaving.value = false
   }
 }
 
 async function postComment() {
-  if (!activeChapter.value || !commentBody.value.trim()) return
+  const chapter = activeChapter.value
+  if (!chapter || !commentBody.value.trim()) return
   try {
-    const created = await api.createComment(activeChapter.value.id, commentBody.value)
+    const created = await api.createComment(chapter.id, commentBody.value)
+    if (activeChapterId.value !== chapter.id) return
     comments.value = [...comments.value, created]
     commentBody.value = ''
   } catch (caught) {

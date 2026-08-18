@@ -36,10 +36,16 @@ const emit = defineEmits<{
 const colors = ['yellow', 'green', 'blue', 'pink']
 const canSave = computed(() => props.draft.note.trim().length > 0)
 
+// HashIDs are opaque strings, so they are never interpolated into a selector. The card is found
+// by comparing the attribute, and the id is re-checked after the await in case the reader has
+// already moved on to another annotation.
 watch(() => props.activeAnnotationId, async (id) => {
   if (!id) return
   await nextTick()
-  document.querySelector(`[data-annotation-card="${id}"]`)?.scrollIntoView({ block: 'nearest' })
+  if (props.activeAnnotationId !== id) return
+  const card = Array.from(document.querySelectorAll('[data-annotation-card]'))
+    .find((element) => element.getAttribute('data-annotation-card') === id)
+  card?.scrollIntoView({ block: 'nearest' })
 })
 
 function updateDraft(patch: Partial<AnnotationDraft>) {
@@ -61,16 +67,43 @@ function updateDraft(patch: Partial<AnnotationDraft>) {
     </button>
 
     <div class="annotation-sidebar-body">
-      <div class="annotation-sidebar-tabs" role="tablist">
-        <button type="button" data-tab="annotations" :class="{ active: props.tab === 'annotations' }" @click="emit('update:tab', 'annotations')">
+      <div class="annotation-sidebar-tabs" role="tablist" aria-label="标注与讨论">
+        <button
+          id="annotation-sidebar-tab-annotations"
+          type="button"
+          role="tab"
+          data-tab="annotations"
+          :aria-selected="props.tab === 'annotations'"
+          aria-controls="annotation-sidebar-panel-annotations"
+          :tabindex="props.tab === 'annotations' ? 0 : -1"
+          :class="{ active: props.tab === 'annotations' }"
+          @click="emit('update:tab', 'annotations')"
+        >
           标注 {{ props.annotations.length }}
         </button>
-        <button type="button" data-tab="comments" :class="{ active: props.tab === 'comments' }" @click="emit('update:tab', 'comments')">
+        <button
+          id="annotation-sidebar-tab-comments"
+          type="button"
+          role="tab"
+          data-tab="comments"
+          :aria-selected="props.tab === 'comments'"
+          aria-controls="annotation-sidebar-panel-comments"
+          :tabindex="props.tab === 'comments' ? 0 : -1"
+          :class="{ active: props.tab === 'comments' }"
+          @click="emit('update:tab', 'comments')"
+        >
           讨论 {{ props.comments.length }}
         </button>
       </div>
 
-      <section v-if="props.tab === 'annotations'" class="annotation-sidebar-panel">
+      <section
+        v-if="props.tab === 'annotations'"
+        id="annotation-sidebar-panel-annotations"
+        class="annotation-sidebar-panel"
+        role="tabpanel"
+        tabindex="0"
+        aria-labelledby="annotation-sidebar-tab-annotations"
+      >
         <div class="annotation-composer">
           <h3>新建标注</h3>
           <blockquote v-if="props.draft.quote">“{{ props.draft.quote }}”</blockquote>
@@ -110,7 +143,14 @@ function updateDraft(patch: Partial<AnnotationDraft>) {
         </div>
       </section>
 
-      <section v-else class="annotation-sidebar-panel comments-panel">
+      <section
+        v-else
+        id="annotation-sidebar-panel-comments"
+        class="annotation-sidebar-panel comments-panel"
+        role="tabpanel"
+        tabindex="0"
+        aria-labelledby="annotation-sidebar-tab-comments"
+      >
         <div class="comment-compose">
           <Avatar :label="props.userName.slice(0, 1)" shape="circle" />
           <RichTextEditor

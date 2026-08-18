@@ -10,6 +10,7 @@ const apiMock = vi.hoisted(() => ({
   listWhiteboards: vi.fn(),
   listComments: vi.fn(),
   createAnnotation: vi.fn(),
+  createComment: vi.fn(),
   updateSubject: vi.fn(),
   updateChapter: vi.fn(),
 }))
@@ -136,6 +137,14 @@ describe('DashboardView ownership editing', () => {
       ...input,
       id: 'note-2',
       chapter_id: chapterId,
+    }))
+    apiMock.createComment.mockImplementation(async (chapterId, body) => ({
+      id: 'comment-1',
+      chapter_id: chapterId,
+      user_id: user.id,
+      author_name: user.name,
+      body,
+      created_at: '2026-08-18T00:00:00Z',
     }))
     apiMock.updateSubject.mockImplementation(async (_id, input) => ({ ...subject, ...input }))
     apiMock.updateChapter.mockImplementation(async (_id, input) => ({ ...subject.chapters[0], ...input }))
@@ -332,11 +341,22 @@ describe('DashboardView ownership editing', () => {
     expect(wrapper.find('.comment-compose textarea:not(.rich-editor)').exists()).toBe(false)
   })
 
+  // 正文默认全宽：the reader has to ask for the sidebar before it takes any width.
+  it('keeps the sidebar collapsed until the reader opens it', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    expect(wrapper.get('.annotation-sidebar').classes()).toContain('is-collapsed')
+
+    await wrapper.get('.annotation-sidebar-handle').trigger('click')
+
+    expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
+  })
+
   it('turns a chapter selection into a composed annotation', async () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
-    await wrapper.get('.annotation-sidebar-handle').trigger('click')
     wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('selection', {
       start_offset: 0,
       end_offset: 3,
@@ -358,7 +378,6 @@ describe('DashboardView ownership editing', () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
-    await wrapper.get('.annotation-sidebar-handle').trigger('click')
     expect(wrapper.get('.annotation-sidebar').classes()).toContain('is-collapsed')
 
     wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('annotation-click', 'note-1')
@@ -372,7 +391,6 @@ describe('DashboardView ownership editing', () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
-    await wrapper.get('.annotation-sidebar-handle').trigger('click')
     expect(wrapper.get('.annotation-sidebar').classes()).toContain('is-collapsed')
 
     await wrapper.get('.chapter-toolbar button[data-action="comments"]').trigger('click')
@@ -568,6 +586,35 @@ describe('DashboardView ownership editing', () => {
     expect(wrapper.findAll('[data-annotation-card]')).toHaveLength(1)
     expect(wrapper.find('[data-annotation-card="note-2"]').exists()).toBe(false)
     expect(wrapper.get('[data-annotation-card="note-1"]').classes()).not.toContain('is-active')
+  })
+
+  // The toolbar shows a live 讨论 N in every mode, so a comment spliced into the wrong chapter
+  // would leave both the list and that count describing a chapter the reader already left.
+  it('drops a comment that arrives after the reader left the chapter', async () => {
+    apiMock.getSubject.mockResolvedValueOnce(twoChapterSubject())
+    let resolvePost: (value: unknown) => void = () => {}
+    apiMock.createComment.mockReturnValueOnce(new Promise<unknown>((resolve) => { resolvePost = resolve }))
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await wrapper.get('[data-tab="comments"]').trigger('click')
+    await wrapper.get('.comment-compose .rich-editor').setValue('<p>第一章的问题</p>')
+    await wrapper.findAll('.comment-compose button').find((button) => button.text() === '发送')!.trigger('click')
+    await openChapter(wrapper, '第二章')
+
+    resolvePost({
+      id: 'comment-1',
+      chapter_id: 'chapter-id',
+      user_id: user.id,
+      author_name: user.name,
+      body: '<p>第一章的问题</p>',
+      created_at: '2026-08-18T00:00:00Z',
+    })
+    await flushPromises()
+
+    expect(apiMock.createComment).toHaveBeenCalledWith('chapter-id', '<p>第一章的问题</p>')
+    expect(wrapper.findAll('.comment-item')).toHaveLength(0)
+    expect(wrapper.get('.chapter-toolbar button[data-action="comments"]').text()).toContain('讨论 0')
   })
 })
 
