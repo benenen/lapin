@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import type { Editor } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 
 import { createEditorExtensions } from '../editor'
+import { annotationDecorationPlugin, annotationDecorationPluginKey, type AnnotationOffsets } from '../annotationMarks'
 
-const props = defineProps<{ content: string }>()
+const props = withDefaults(defineProps<{ content: string; annotations?: AnnotationOffsets[] }>(), {
+  annotations: () => [],
+})
 const emit = defineEmits<{
   selection: [selection: { start_offset: number; end_offset: number; quote: string }]
+  'annotation-click': [id: string]
 }>()
 
 const editor = useEditor({
@@ -16,6 +20,10 @@ const editor = useEditor({
   editable: false,
   extensions: createEditorExtensions(),
   onSelectionUpdate: ({ editor: current }) => emitSelection(current),
+})
+
+onMounted(() => {
+  editor.value?.registerPlugin(annotationDecorationPlugin(() => props.annotations))
 })
 
 watch(
@@ -28,6 +36,22 @@ watch(
     }
   },
 )
+
+watch(
+  () => props.annotations,
+  () => {
+    const current = editor.value
+    if (!current) return
+    current.view.dispatch(current.state.tr.setMeta(annotationDecorationPluginKey, true))
+  },
+  { deep: true },
+)
+
+function handleClick(event: MouseEvent) {
+  const target = (event.target as HTMLElement | null)?.closest('[data-annotation-id]')
+  const id = target?.getAttribute('data-annotation-id')
+  if (id) emit('annotation-click', id)
+}
 
 function emitSelection(current: Editor) {
   const { from, to } = current.state.selection
@@ -50,5 +74,5 @@ function emitSelection(current: Editor) {
 </script>
 
 <template>
-  <EditorContent class="chapter-content autosize-rich-text" :editor="editor" />
+  <EditorContent class="chapter-content autosize-rich-text" :editor="editor" @click="handleClick" />
 </template>

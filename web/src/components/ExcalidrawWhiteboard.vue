@@ -4,6 +4,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 
 import type { PersistedWhiteboardData, WhiteboardData } from '../types'
+import type { AnnotationOffsets } from '../annotationMarks'
 import { mountExcalidraw, type ExcalidrawBridge } from '../excalidrawBridge'
 import { chapterContentRevision, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, viewportScale, WHITEBOARD_MIN_HEIGHT, WHITEBOARD_WIDTH, whiteboardReferenceHeight, whiteboardWindow } from '../whiteboard'
 import RichTextContent from './RichTextContent.vue'
@@ -12,6 +13,7 @@ const props = defineProps<{
   chapterId: string
   content: string
   active: boolean
+  annotations?: AnnotationOffsets[]
   modelValue?: PersistedWhiteboardData | null
   saving?: boolean
 }>()
@@ -19,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [data: WhiteboardData]
   selection: [selection: { start_offset: number; end_offset: number; quote: string }]
+  'annotation-click': [id: string]
 }>()
 
 const viewport = ref<HTMLElement | null>(null)
@@ -193,6 +196,13 @@ async function save() {
     error.value = caught instanceof Error ? caught.message : '保存白板失败'
   }
 }
+
+defineExpose({
+  undo: () => bridge?.undo(),
+  redo: () => bridge?.redo(),
+  clear: () => bridge?.clear(),
+  save,
+})
 </script>
 
 <template>
@@ -206,7 +216,13 @@ async function save() {
     <div ref="viewport" class="whiteboard-viewport">
       <div ref="stage" class="whiteboard-stage" :class="{ 'is-active': props.active, 'is-interactive': interactionReady }" :style="stageStyle">
         <div ref="contentLayer" class="whiteboard-content-layer" :style="contentStyle">
-          <RichTextContent v-if="content" :content="content" @selection="emit('selection', $event)" />
+          <RichTextContent
+            v-if="content"
+            :content="content"
+            :annotations="props.annotations ?? []"
+            @selection="emit('selection', $event)"
+            @annotation-click="emit('annotation-click', $event)"
+          />
           <p v-else class="chapter-content">本章暂无正文，可以直接在空白区域勾画。</p>
         </div>
         <div ref="editorHost" class="excalidraw-host" :style="hostStyle" aria-label="章节透明白板" :aria-hidden="!props.active || !interactionReady" />

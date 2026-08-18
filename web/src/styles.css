@@ -158,6 +158,12 @@ button, input, textarea { font: inherit; }
 .annotation-composer blockquote { margin: .7rem 0; padding: .7rem; border-left: 3px solid #d5ad52; color: #6d664f; background: #f8f1d9; }
 .annotation-empty-quote { color: #899087; }
 .annotation-card.is-active { box-shadow: 0 0 0 2px #33483e; }
+.annotation-mark { border-radius: 3px; box-shadow: inset 0 -.5em 0 rgba(240, 214, 123, .55); cursor: pointer; }
+.annotation-mark-yellow { box-shadow: inset 0 -.5em 0 rgba(240, 214, 123, .55); }
+.annotation-mark-green { box-shadow: inset 0 -.5em 0 rgba(159, 207, 168, .55); }
+.annotation-mark-blue { box-shadow: inset 0 -.5em 0 rgba(158, 190, 219, .55); }
+.annotation-mark-pink { box-shadow: inset 0 -.5em 0 rgba(231, 174, 182, .55); }
+.annotation-mark:hover { box-shadow: inset 0 -1.1em 0 rgba(213, 173, 82, .35); }
 @media (max-width: 900px) {
   .annotation-sidebar { position: fixed; top: 0; right: 0; z-index: 40; max-height: 100vh; }
 }
