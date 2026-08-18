@@ -256,6 +256,14 @@ func allowedAnnotationColor(value string) bool {
 const (
 	maxWhiteboardWidth  = 10_000
 	maxWhiteboardHeight = 200_000
+
+	// Elements live inside the space, so their coordinate bounds have to cover it: a stroke in
+	// the lower half of a long chapter is at a Y the space allows, and rejecting it would fail
+	// the whole save with 白板数据无效或过大. Horizontal extents keep the historical, tighter
+	// limit because a space is never wider than maxWhiteboardWidth; vertical extents follow the
+	// height bound. Both axes stay well clear of the reading column, which is 960 reference px.
+	maxWhiteboardCoordinateX = 100_000
+	maxWhiteboardCoordinateY = maxWhiteboardHeight
 )
 
 func validWhiteboardData(data []byte, chapterHashID string) bool {
@@ -405,8 +413,8 @@ func validWhiteboardElement(record []byte) (string, bool) {
 	if !validWhiteboardElementSchema(record, element) {
 		return "", false
 	}
-	if !finiteInRange(element.X, -100_000, 100_000) || !finiteInRange(element.Y, -100_000, 100_000) ||
-		!finiteInRange(element.Width, 0, 100_000) || !finiteInRange(element.Height, 0, 100_000) || !finiteInRange(element.Angle, -1_000, 1_000) {
+	if !finiteInRange(element.X, -maxWhiteboardCoordinateX, maxWhiteboardCoordinateX) || !finiteInRange(element.Y, -maxWhiteboardCoordinateY, maxWhiteboardCoordinateY) ||
+		!finiteInRange(element.Width, 0, maxWhiteboardCoordinateX) || !finiteInRange(element.Height, 0, maxWhiteboardCoordinateY) || !finiteInRange(element.Angle, -1_000, 1_000) {
 		return "", false
 	}
 	if element.Seed == nil || *element.Seed < 0 || *element.Seed > math.MaxInt32 ||
@@ -631,8 +639,8 @@ func validPoint(point []float64, optional bool) bool {
 	if point == nil {
 		return optional
 	}
-	return len(point) == 2 && !math.IsNaN(point[0]) && !math.IsInf(point[0], 0) && math.Abs(point[0]) <= 100_000 &&
-		!math.IsNaN(point[1]) && !math.IsInf(point[1], 0) && math.Abs(point[1]) <= 100_000
+	return len(point) == 2 && !math.IsNaN(point[0]) && !math.IsInf(point[0], 0) && math.Abs(point[0]) <= maxWhiteboardCoordinateX &&
+		!math.IsNaN(point[1]) && !math.IsInf(point[1], 0) && math.Abs(point[1]) <= maxWhiteboardCoordinateY
 }
 
 func finiteInRange(value *float64, minimum, maximum float64) bool {
@@ -660,8 +668,7 @@ func validElementPoints(points *[][]float64) bool {
 		return false
 	}
 	for _, point := range *points {
-		if len(point) != 2 || math.IsNaN(point[0]) || math.IsInf(point[0], 0) || math.Abs(point[0]) > 100_000 ||
-			math.IsNaN(point[1]) || math.IsInf(point[1], 0) || math.Abs(point[1]) > 100_000 {
+		if !validPoint(point, false) {
 			return false
 		}
 	}

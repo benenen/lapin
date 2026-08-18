@@ -7,6 +7,10 @@ export const WHITEBOARD_MIN_HEIGHT = 640
 // chapter instead of covering it end to end.
 export const WHITEBOARD_WINDOW_VIEWPORTS = 3
 export const WHITEBOARD_MAX_WINDOW_HEIGHT = 12000
+// Mirrors maxWhiteboardHeight in internal/httpapi/handler/interactions.go. An image-heavy
+// chapter can measure taller than that, and the server would reject the whole save with a
+// generic error, so clamp here instead of losing the session's ink at the API boundary.
+export const WHITEBOARD_MAX_HEIGHT = 200_000
 const SUPPORTED_EXCALIDRAW_ELEMENTS = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text'])
 
 export function isSupportedExcalidrawElement(type: string): boolean {
@@ -64,7 +68,7 @@ export function viewportScale(viewportWidth: number, referenceWidth = WHITEBOARD
 
 export function whiteboardReferenceHeight(contentHeight: number, minimumHeight = WHITEBOARD_MIN_HEIGHT): number {
   const measuredHeight = Number.isFinite(contentHeight) && contentHeight > 0 ? contentHeight : 0
-  return Math.max(minimumHeight, measuredHeight + 80)
+  return Math.min(WHITEBOARD_MAX_HEIGHT, Math.max(minimumHeight, measuredHeight + 80))
 }
 
 export function excalidrawViewport(viewportWidth: number, referenceWidth = WHITEBOARD_WIDTH, offsetTop = 0) {

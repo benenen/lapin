@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { chapterContentRevision, excalidrawViewport, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, isSupportedExcalidrawElement, viewportScale, WHITEBOARD_MAX_WINDOW_HEIGHT, whiteboardReferenceHeight, whiteboardWindow } from './whiteboard'
+import { chapterContentRevision, excalidrawViewport, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, isSupportedExcalidrawElement, viewportScale, WHITEBOARD_MAX_HEIGHT, WHITEBOARD_MAX_WINDOW_HEIGHT, whiteboardReferenceHeight, whiteboardWindow } from './whiteboard'
 
 describe('anchored whiteboard contract', () => {
   it('keeps one canonical coordinate space while the viewport resizes', () => {
@@ -50,6 +50,15 @@ describe('anchored whiteboard contract', () => {
     expect(whiteboardReferenceHeight(900, 640)).toBe(980)
     expect(whiteboardReferenceHeight(100, 1200)).toBe(1200)
     expect(whiteboardReferenceHeight(Number.NaN, 640)).toBe(640)
+  })
+
+  // The server rejects a space taller than this outright, so an image-heavy chapter has to be
+  // clamped here rather than losing the whole board to 白板数据无效或过大 on save.
+  it('never asks for a space taller than the server accepts', () => {
+    expect(WHITEBOARD_MAX_HEIGHT).toBe(200_000)
+    expect(whiteboardReferenceHeight(400_000, 640)).toBe(WHITEBOARD_MAX_HEIGHT)
+    expect(whiteboardReferenceHeight(0, 400_000)).toBe(WHITEBOARD_MAX_HEIGHT)
+    expect(whiteboardReferenceHeight(WHITEBOARD_MAX_HEIGHT - 80, 640)).toBe(WHITEBOARD_MAX_HEIGHT)
   })
 
   it('places the transparent scene directly on the chapter by default', () => {

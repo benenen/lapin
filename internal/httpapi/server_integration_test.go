@@ -180,6 +180,15 @@ func TestUserCanImportAndStudySubject(t *testing.T) {
 	if response.StatusCode() != 200 {
 		t.Fatalf("save whiteboard anchored to a long chapter status = %d, body = %s", response.StatusCode(), response.Body())
 	}
+	// A space this tall is accepted, so ink drawn in its lower half must be accepted too:
+	// element Y and vertical stroke points have to reach the same bound the space does.
+	response = performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", tallSpaceWhiteboardJSON(chapterID),
+		ut.Header{Key: "Cookie", Value: cookies},
+		ut.Header{Key: "X-CSRF-Token", Value: payload.Data.CSRFToken},
+	)
+	if response.StatusCode() != 200 {
+		t.Fatalf("save whiteboard drawn near the bottom of a tall space status = %d, body = %s", response.StatusCode(), response.Body())
+	}
 	response = performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", whiteboardDocument,
 		ut.Header{Key: "Cookie", Value: cookies},
 		ut.Header{Key: "X-CSRF-Token", Value: payload.Data.CSRFToken},
@@ -449,6 +458,10 @@ func TestAPIRejectsInvalidAndUnauthorizedRequests(t *testing.T) {
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[{"id":"duplicate","type":"freedraw"},{"id":"duplicate","type":"freedraw"}],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`,
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[{"id":"incomplete","type":"rectangle"}],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`,
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[{"id":"extreme","type":"rectangle","x":1e100,"y":0,"width":10,"height":10,"angle":0,"seed":1,"version":1,"versionNonce":1,"updated":1,"opacity":100,"strokeWidth":1,"roughness":1,"isDeleted":false,"locked":false}],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`,
+		// Same accepted tall space as the happy path, one coordinate past the bound each time.
+		strings.Replace(tallSpaceWhiteboardJSON(chapterID), `"x":180,"y":189000,"id":"shape-1"`, `"x":180,"y":200001,"id":"shape-1"`, 1),
+		strings.Replace(tallSpaceWhiteboardJSON(chapterID), `"x":180,"y":189000,"id":"shape-1"`, `"x":100001,"y":189000,"id":"shape-1"`, 1),
+		strings.Replace(tallSpaceWhiteboardJSON(chapterID), `"points":[[0,0],[120,39000]]`, `"points":[[0,0],[120,200001]]`, 1),
 	}
 	for _, body := range invalidWhiteboards {
 		assertStatus(t, performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", body,
@@ -753,6 +766,18 @@ func validWhiteboardJSON(chapterID string) string {
 		`{"x":180,"y":64,"id":"shape-1","link":null,"seed":1832806106,"type":"rectangle","angle":0,"index":"a1","width":110,"height":70,"locked":false,"frameId":null,"opacity":100,"updated":1786897837352,"version":3,"groupIds":[],"fillStyle":"solid","isDeleted":false,"roughness":1,"roundness":{"type":3},"strokeColor":"#1e1e1e","strokeStyle":"solid","strokeWidth":2,"versionNonce":97133318,"boundElements":null,"backgroundColor":"transparent"},` +
 		`{"x":340,"y":96,"id":"text-1","link":null,"seed":123456789,"type":"text","angle":0,"index":"a2","width":80,"height":25,"locked":false,"frameId":null,"opacity":100,"updated":1786897837353,"version":2,"groupIds":[],"fillStyle":"solid","isDeleted":false,"roughness":1,"roundness":null,"strokeColor":"#1e1e1e","strokeStyle":"solid","strokeWidth":2,"versionNonce":123456790,"boundElements":null,"backgroundColor":"transparent","text":"正文","fontSize":20,"fontFamily":1,"textAlign":"left","verticalAlign":"top","containerId":null,"originalText":"正文","autoResize":true,"lineHeight":1.25}` +
 		`],"appState":{"viewBackgroundColor":"transparent"},"files":{}}}}`
+}
+
+// A board anchored to a long chapter: the space is near the height bound and the drawing sits
+// at its bottom, where an element-coordinate bound tighter than the height bound would reject
+// the whole save even though the space itself is accepted.
+func tallSpaceWhiteboardJSON(chapterID string) string {
+	return strings.NewReplacer(
+		`"space":{"width":960,"height":640,"fit":"contain"}`, `"space":{"width":960,"height":190000,"fit":"contain"}`,
+		`"x":24,"y":32,"id":"line-1"`, `"x":24,"y":150000,"id":"line-1"`,
+		`"width":120,"height":20,"locked":false,"points":[[0,0],[120,20]]`, `"width":120,"height":39000,"locked":false,"points":[[0,0],[120,39000]]`,
+		`"x":180,"y":64,"id":"shape-1"`, `"x":180,"y":189000,"id":"shape-1"`,
+	).Replace(validWhiteboardJSON(chapterID))
 }
 
 func cookieHeader(response *protocol.Response) string {
