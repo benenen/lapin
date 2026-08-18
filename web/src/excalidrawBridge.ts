@@ -19,7 +19,6 @@ export interface ExcalidrawBridge {
   undo: () => void
   redo: () => void
   clear: () => void
-  setSaving: (saving: boolean) => void
   getDocument: () => WhiteboardData['document']
 }
 
@@ -279,12 +278,6 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
     undo: () => triggerHistoryShortcut(false),
     redo: () => triggerHistoryShortcut(true),
     clear,
-    setSaving: (saving) => {
-      const saveButton = element.querySelector<HTMLButtonElement>('.lapin-save-whiteboard')
-      if (!saveButton) return
-      saveButton.disabled = saving
-      saveButton.setAttribute('aria-busy', String(saving))
-    },
     getDocument: () => {
       if (!api) throw new Error('白板仍在加载')
       if (Object.keys(api.getFiles()).length > 0) throw new Error('当前白板暂不支持图片，请删除图片后再保存')

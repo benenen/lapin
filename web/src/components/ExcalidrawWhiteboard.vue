@@ -15,7 +15,6 @@ const props = defineProps<{
   active: boolean
   annotations?: AnnotationOffsets[]
   modelValue?: PersistedWhiteboardData | null
-  saving?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -86,7 +85,6 @@ onBeforeUnmount(() => {
 watch(() => props.chapterId, () => { legacyResetAllowed.value = false })
 watch(() => [props.chapterId, props.content, props.modelValue] as const, () => void rebuild(), { deep: true })
 watch(() => props.active, () => { void prepareInteraction() })
-watch(() => props.saving, (saving) => bridge?.setSaving(Boolean(saving)))
 
 function syncScale() {
   scale.value = viewportScale(viewport.value?.getBoundingClientRect().width ?? referenceWidth.value, referenceWidth.value)
@@ -171,7 +169,6 @@ async function rebuild() {
     onReady: () => {
       if (generation !== rebuildGeneration) return
       ready.value = true
-      bridge?.setSaving(Boolean(props.saving))
       void prepareInteraction()
     },
     onError: (caught: Error) => { if (generation === rebuildGeneration) error.value = caught.message },

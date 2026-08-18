@@ -8,7 +8,6 @@ const bridgeMock = vi.hoisted(() => ({
   getDocument: vi.fn(),
   isReady: vi.fn(() => true),
   resize: vi.fn(),
-  setSaving: vi.fn(),
 }))
 
 const mountExcalidrawMock = vi.hoisted(() => vi.fn((_host: HTMLElement, _options: { offsetTop?: () => number }) => bridgeMock))
