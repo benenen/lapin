@@ -84,7 +84,7 @@ watch(activeChapterId, (id) => {
   whiteboards.value = []
   comments.value = []
   activeAnnotationId.value = ''
-  cancelSelection()
+  resetAnnotationDraft()
   if (!id) return
   void loadChapterInteractions(id)
   void loadWhiteboards(id)
@@ -231,6 +231,12 @@ function cancelSelection() {
   annotation.value = { ...annotation.value, start_offset: 0, end_offset: 0, quote: '' }
 }
 
+// Leaving the chapter throws the whole draft away: a note written against
+// chapter A must never be saveable against chapter B.
+function resetAnnotationDraft() {
+  annotation.value = { start_offset: 0, end_offset: 0, quote: '', note: '', color: 'yellow' }
+}
+
 function focusAnnotation(id: string) {
   activeAnnotationId.value = id
   openSidebar('annotations')
@@ -243,7 +249,7 @@ async function saveAnnotation() {
     const created = await api.createAnnotation(chapter.id, annotation.value)
     if (activeChapterId.value !== chapter.id) return
     annotations.value = [created, ...annotations.value]
-    annotation.value = { start_offset: 0, end_offset: 0, quote: '', note: '', color: 'yellow' }
+    resetAnnotationDraft()
     activeAnnotationId.value = created.id
   } catch (caught) {
     showError(caught)
