@@ -51,7 +51,9 @@ Emits：`toggle-whiteboard`、`open-sidebar(tab)`、`pick-color(color)`、`compo
 
 `mode` 的推导优先级：有选区 → `selecting`；否则白板已开 → `whiteboard`；否则 `reading`。白板开启时正文不可选中，因此前两者不会同时成立。
 
-白板的撤销 / 重做 / 清空 / 保存从 Excalidraw 自带工具栏搬到这里，`excalidrawBridge.ts` 的 `ToolbarExtension` 只保留拖动把手，Excalidraw 原工具栏只剩绘制工具，避免同一动作两个入口。`ExcalidrawWhiteboard.vue` 通过 `defineExpose` 暴露 `undo` / `redo` / `clear` / `save`，转调既有的 `ExcalidrawBridge` 方法。
+白板的撤销 / 重做 / 清空 / 保存从 Excalidraw 自带工具栏搬到这里，Excalidraw 原工具栏只剩绘制工具，避免同一动作两个入口。`ExcalidrawWhiteboard.vue` 通过 `defineExpose` 暴露 `undo` / `redo` / `clear` / `save`，转调既有的 `ExcalidrawBridge` 方法。
+
+实现补记（2026-08-18）：原计划让 `excalidrawBridge.ts` 的 `ToolbarExtension` 保留一个拖动把手，但它的 portal 目标 `.App-top-bar .App-toolbar > .Stack_horizontal` 在 zen 模式下根本不存在（没有 `.App-top-bar` 祖先），把手从未渲染过，因此整个 `ToolbarExtension`（含 `renderTopRightUI` 与相关 CSS）已删除。撤销 / 重做走 `.excalidraw-container` 上的键盘事件：`handleKeyboardGlobally: false` 时 Excalidraw 的按键处理挂在该容器的 React `onKeyDown` 上，事件必须派发到容器本身，派发到 React 根节点不会被子节点收到。
 
 `reading` 态点 `✎ 标注` 等于打开侧边栏的标注页；`selecting` 态点 `写标注 →` 展开侧边栏并把引用与颜色带进新建区。
 

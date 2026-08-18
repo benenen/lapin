@@ -3,9 +3,8 @@ import {
   Excalidraw,
 } from '@excalidraw/excalidraw'
 import type { ExcalidrawImperativeAPI, ExcalidrawInitialDataState, NormalizedZoomValue } from '@excalidraw/excalidraw/types'
-import { createElement, Fragment, useLayoutEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
-import { createPortal, flushSync } from 'react-dom'
+import { createElement } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 
 import type { WhiteboardData } from './types'
@@ -27,104 +26,14 @@ interface MountOptions {
   width: number
   height: number
   offsetTop?: () => number
-  onSave?: () => void
   onReady?: () => void
   onError?: (error: Error) => void
-}
-
-const DEFAULT_TOOLBAR_X = -80
-const DEFAULT_TOOLBAR_Y = -73
-
-function toolbarIcon(...paths: string[]): ReactNode {
-  return createElement('span', { className: 'lapin-toolbar-icon', 'aria-hidden': 'true' },
-    createElement('svg', {
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      strokeWidth: 2,
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-    }, paths.map((path) => createElement('path', { key: path, d: path }))),
-  )
 }
 
 function historyShortcutModifiers(): { ctrlKey: boolean; metaKey: boolean } {
   const platform = typeof navigator === 'undefined' ? '' : `${navigator.platform} ${navigator.userAgent}`
   const applePlatform = /Mac|iPhone|iPad|iPod/i.test(platform)
   return { ctrlKey: !applePlatform, metaKey: applePlatform }
-}
-
-interface ToolbarExtensionProps {
-  host: HTMLElement
-}
-
-function ToolbarExtension({ host }: ToolbarExtensionProps) {
-  const [target, setTarget] = useState<Element | null>(null)
-  const offset = useRef({ x: DEFAULT_TOOLBAR_X, y: DEFAULT_TOOLBAR_Y })
-  const dragCleanup = useRef<(() => void) | null>(null)
-
-  useLayoutEffect(() => {
-    const toolbar = host.querySelector('.App-top-bar .App-toolbar > .Stack_horizontal')
-    setTarget(toolbar)
-  }, [host])
-
-  useLayoutEffect(() => () => dragCleanup.current?.(), [])
-
-  useLayoutEffect(() => {
-    const container = target?.closest('.App-toolbar-container') as HTMLElement | null
-    if (!container) return
-    container.dataset.lapinDraggableToolbar = 'true'
-    container.style.transform = `translate(${offset.current.x}px, ${offset.current.y}px)`
-    return () => {
-      delete container.dataset.lapinDraggableToolbar
-      container.style.removeProperty('transform')
-    }
-  }, [target])
-
-  const startDragging = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const container = target?.closest('.App-toolbar-container') as HTMLElement | null
-    if (!container) return
-    event.preventDefault()
-    event.stopPropagation()
-    dragCleanup.current?.()
-    const origin = { ...offset.current }
-    const pointer = { x: event.clientX, y: event.clientY }
-    const move = (current: PointerEvent) => {
-      const next = {
-        x: origin.x + current.clientX - pointer.x,
-        y: origin.y + current.clientY - pointer.y,
-      }
-      offset.current = next
-      container.style.transform = `translate(${next.x}px, ${next.y}px)`
-    }
-    const stop = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', stop)
-      window.removeEventListener('pointercancel', stop)
-      if (dragCleanup.current === stop) dragCleanup.current = null
-    }
-    dragCleanup.current = stop
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', stop, { once: true })
-    window.addEventListener('pointercancel', stop, { once: true })
-  }
-
-  if (!target) return null
-  const button = (key: string, label: string, icon: ReactNode, action: () => void, className = '') => createElement('button', {
-    key,
-    type: 'button',
-    className: `ToolIcon_type_button ToolIcon_size_medium ToolIcon lapin-excalidraw-action ${className}`.trim(),
-    'aria-label': label,
-    title: label,
-    'data-prevent-outside-click': 'true',
-    onClick: action,
-    onPointerDown: className.includes('drag-handle') ? startDragging : undefined,
-  }, icon)
-
-  return createPortal(createElement(Fragment, null,
-    createElement('div', { key: 'divider', className: 'App-toolbar__divider' }),
-    button('drag', '拖动白板工具栏', toolbarIcon('M8 6h.01', 'M8 12h.01', 'M8 18h.01', 'M16 6h.01', 'M16 12h.01', 'M16 18h.01'), () => {}, 'lapin-toolbar-drag-handle'),
-  ), target)
 }
 
 export function mountExcalidraw(element: HTMLElement, options: MountOptions): ExcalidrawBridge {
@@ -202,9 +111,13 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
     })
   }
 
+  // Excalidraw is mounted with handleKeyboardGlobally: false, so undo/redo hang off a React
+  // onKeyDown prop on `.excalidraw-container` — a child of the root we render into. A keydown
+  // dispatched on the parent never reaches a child handler, so aim at the container itself.
   const triggerHistoryShortcut = (redo: boolean) => {
-    element.focus()
-    element.dispatchEvent(new KeyboardEvent('keydown', {
+    const target = (element.querySelector('.excalidraw-container') as HTMLElement | null) ?? element
+    target.focus()
+    target.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'z',
       code: 'KeyZ',
       ...historyShortcutModifiers(),
@@ -218,8 +131,6 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
     if (api) api.updateScene({ elements: [], captureUpdate: CaptureUpdateAction.IMMEDIATELY })
   }
 
-  const renderTopRightUI = () => createElement(ToolbarExtension, { host: element })
-
   if (!loadFailed) {
     root.render(createElement(Excalidraw, {
       initialData,
@@ -227,7 +138,6 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
       detectScroll: true,
       handleKeyboardGlobally: false,
       zenModeEnabled: true,
-      renderTopRightUI,
       onScrollChange: (scrollX, scrollY, zoom) => {
         if (!api || viewportResetPending) return
         const expected = expectedViewport()

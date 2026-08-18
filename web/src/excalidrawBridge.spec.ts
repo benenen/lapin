@@ -35,21 +35,6 @@ describe('Excalidraw bridge', () => {
     expect(errors[0]?.message).toBe('invalid scene')
   })
 
-  it('leaves only the drag handle in the built-in toolbar', () => {
-    const host = document.createElement('div')
-    mountExcalidraw(host, { width: 960, height: 640 })
-
-    const excalidrawElement = reactRoot.render.mock.calls[0]?.[0]
-    expect(excalidrawElement?.props.renderTopRightUI).toBeTypeOf('function')
-
-    const extension = excalidrawElement.props.renderTopRightUI()
-    expect(extension.props.host).toBe(host)
-    expect(extension.props.undo).toBeUndefined()
-    expect(extension.props.redo).toBeUndefined()
-    expect(extension.props.clear).toBeUndefined()
-    expect(extension.props.save).toBeUndefined()
-  })
-
   it('keeps the canvas camera locked while allowing document wheel scrolling', async () => {
     const host = document.createElement('div')
     const parent = document.createElement('div')
@@ -147,6 +132,46 @@ describe('Excalidraw bridge', () => {
     expect(api.updateScene).toHaveBeenCalledWith(expect.objectContaining({
       appState: { scrollX: 0, scrollY: -5100, zoom: { value: 1 } },
     }))
+  })
+
+  // Excalidraw runs with handleKeyboardGlobally: false, so its key handling lives on a React
+  // onKeyDown prop on `.excalidraw-container`. Dispatching on the React root — the container's
+  // parent — never reaches that handler, which left 撤销 and 重做 silent no-ops.
+  it('sends history shortcuts to the Excalidraw container, not the React root', () => {
+    const host = document.createElement('div')
+    const container = document.createElement('div')
+    container.className = 'excalidraw excalidraw-container'
+    host.append(container)
+    const onContainer: KeyboardEvent[] = []
+    const onHost: KeyboardEvent[] = []
+    container.addEventListener('keydown', (event) => { onContainer.push(event) })
+    host.addEventListener('keydown', (event) => { onHost.push(event) })
+
+    const bridge = mountExcalidraw(host, { width: 960, height: 640 })
+    bridge.undo()
+
+    expect(onContainer).toHaveLength(1)
+    expect(onContainer[0]?.target).toBe(container)
+    expect(onContainer[0]?.key).toBe('z')
+    expect(onContainer[0]?.ctrlKey).toBe(true)
+    expect(onContainer[0]?.metaKey).toBe(false)
+    expect(onContainer[0]?.shiftKey).toBe(false)
+    expect(onHost[0]?.target).toBe(container)
+
+    bridge.redo()
+
+    expect(onContainer[1]?.target).toBe(container)
+    expect(onContainer[1]?.shiftKey).toBe(true)
+  })
+
+  it('falls back to the React root when Excalidraw has not rendered its container yet', () => {
+    const host = document.createElement('div')
+    const shortcuts: KeyboardEvent[] = []
+    host.addEventListener('keydown', (event) => { shortcuts.push(event) })
+
+    mountExcalidraw(host, { width: 960, height: 640 }).undo()
+
+    expect(shortcuts[0]?.target).toBe(host)
   })
 
   it('uses the macOS command modifier for toolbar history actions', () => {

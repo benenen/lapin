@@ -165,7 +165,6 @@ async function rebuild() {
     width: referenceWidth.value,
     height: referenceHeight.value,
     offsetTop: () => windowTop.value * scale.value,
-    onSave: save,
     onReady: () => {
       if (generation !== rebuildGeneration) return
       ready.value = true
