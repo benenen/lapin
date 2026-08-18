@@ -171,8 +171,10 @@ button, input, textarea { font: inherit; }
 .annotation-mark-green { --annotation-tint: rgba(159, 207, 168, .55); --annotation-hover: rgba(159, 207, 168, .9); --annotation-dot: #63a171; }
 .annotation-mark-blue { --annotation-tint: rgba(158, 190, 219, .55); --annotation-hover: rgba(158, 190, 219, .9); --annotation-dot: #548bb8; }
 .annotation-mark-pink { --annotation-tint: rgba(231, 174, 182, .55); --annotation-hover: rgba(231, 174, 182, .9); --annotation-dot: #c56f7d; }
-/* On a phone the drawer takes the full height; the column never shifts, there is no room. */
-@media (max-width: 960px) {
+/* Below this the 46rem column and the 20rem panel cannot both fit, so sliding the text only
+   trades one overlap for another. The panel becomes a full-height drawer the reader opens,
+   reads and closes, and the column stays exactly where it was. */
+@media (max-width: 1100px) {
   .annotation-sidebar { top: 4.8rem; max-height: calc(100vh - 4.8rem); }
   .chapter-document.is-shifted { transform: none; }
 }
