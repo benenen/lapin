@@ -98,6 +98,41 @@ describe('ChapterToolbar', () => {
     expect(wrapper.get('button[data-action="whiteboard"]').attributes('disabled')).toBeDefined()
   })
 
+  it('keeps a whiteboard exit on the selecting bar', async () => {
+    const wrapper = mountToolbar({ mode: 'selecting', quote: '正文' })
+
+    const actions = wrapper.findAll('button[data-action]').map((button) => button.attributes('data-action'))
+    expect(actions).toEqual(['compose', 'whiteboard', 'cancel'])
+
+    const whiteboard = wrapper.get('button[data-action="whiteboard"]')
+    expect(whiteboard.attributes('aria-pressed')).toBe('false')
+    await whiteboard.trigger('click')
+
+    expect(wrapper.emitted('toggle-whiteboard')).toHaveLength(1)
+  })
+
+  it('blocks the selecting whiteboard button until persisted data has loaded', () => {
+    const wrapper = mountToolbar({ mode: 'selecting', quote: '正文', whiteboardDisabled: true })
+
+    expect(wrapper.get('button[data-action="whiteboard"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('blocks the selecting whiteboard button while persisted data is still loading', () => {
+    const wrapper = mountToolbar({ mode: 'selecting', quote: '正文', whiteboardLoading: true })
+
+    expect(wrapper.get('button[data-action="whiteboard"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('offers the retry on the selecting bar when the whiteboard failed to load', async () => {
+    const wrapper = mountToolbar({ mode: 'selecting', quote: '正文', whiteboardError: true })
+
+    expect(wrapper.find('button[data-action="whiteboard"]').exists()).toBe(false)
+    await wrapper.get('button[data-action="retry-whiteboard"]').trigger('click')
+
+    expect(wrapper.emitted('retry-whiteboard')).toHaveLength(1)
+    expect(wrapper.find('button[data-action="cancel"]').exists()).toBe(true)
+  })
+
   it('offers a retry instead of a toggle when the whiteboard failed to load', async () => {
     const wrapper = mountToolbar({ whiteboardError: true })
 

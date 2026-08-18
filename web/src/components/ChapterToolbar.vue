@@ -50,38 +50,43 @@ const whiteboardOpen = computed(() => props.mode === 'whiteboard')
       <button type="button" data-action="compose" class="chapter-toolbar-primary" @click="emit('compose-annotation')">
         <i class="pi pi-pencil" /> 写标注
       </button>
-      <button type="button" data-action="cancel" aria-label="取消选区" @click="emit('cancel-selection')">
-        <i class="pi pi-times" />
-      </button>
+      <span class="chapter-toolbar-divider" aria-hidden="true" />
     </template>
+
+    <!-- The whiteboard exit stays reachable in every mode, so it is defined once here. -->
+    <button
+      v-if="props.whiteboardError"
+      type="button"
+      data-action="retry-whiteboard"
+      @click="emit('retry-whiteboard')"
+    >
+      <i class="pi pi-refresh" /> 重试白板
+    </button>
+    <button
+      v-else
+      type="button"
+      data-action="whiteboard"
+      :class="{ active: whiteboardOpen }"
+      :disabled="props.whiteboardDisabled || props.whiteboardLoading"
+      :aria-pressed="whiteboardOpen"
+      @click="emit('toggle-whiteboard')"
+    >
+      <i class="pi" :class="whiteboardOpen ? 'pi-eye-slash' : 'pi-eye'" /> 白板
+    </button>
+
+    <template v-if="whiteboardOpen">
+      <span class="chapter-toolbar-divider" aria-hidden="true" />
+      <button type="button" data-action="undo" aria-label="撤销" @click="emit('undo')"><i class="pi pi-undo" /></button>
+      <button type="button" data-action="redo" aria-label="重做" @click="emit('redo')"><i class="pi pi-refresh" /></button>
+      <button type="button" data-action="clear" aria-label="清空白板" @click="emit('clear')"><i class="pi pi-trash" /></button>
+      <button type="button" data-action="save-whiteboard" aria-label="保存白板" :disabled="props.saving" @click="emit('save-whiteboard')"><i class="pi pi-check" /></button>
+      <span class="chapter-toolbar-divider" aria-hidden="true" />
+    </template>
+
+    <button v-if="selecting" type="button" data-action="cancel" aria-label="取消选区" @click="emit('cancel-selection')">
+      <i class="pi pi-times" />
+    </button>
     <template v-else>
-      <button
-        v-if="props.whiteboardError"
-        type="button"
-        data-action="retry-whiteboard"
-        @click="emit('retry-whiteboard')"
-      >
-        <i class="pi pi-refresh" /> 重试白板
-      </button>
-      <button
-        v-else
-        type="button"
-        data-action="whiteboard"
-        :class="{ active: whiteboardOpen }"
-        :disabled="props.whiteboardDisabled || props.whiteboardLoading"
-        :aria-pressed="whiteboardOpen"
-        @click="emit('toggle-whiteboard')"
-      >
-        <i class="pi" :class="whiteboardOpen ? 'pi-eye-slash' : 'pi-eye'" /> 白板
-      </button>
-      <template v-if="whiteboardOpen">
-        <span class="chapter-toolbar-divider" aria-hidden="true" />
-        <button type="button" data-action="undo" aria-label="撤销" @click="emit('undo')"><i class="pi pi-undo" /></button>
-        <button type="button" data-action="redo" aria-label="重做" @click="emit('redo')"><i class="pi pi-refresh" /></button>
-        <button type="button" data-action="clear" aria-label="清空白板" @click="emit('clear')"><i class="pi pi-trash" /></button>
-        <button type="button" data-action="save-whiteboard" aria-label="保存白板" :disabled="props.saving" @click="emit('save-whiteboard')"><i class="pi pi-check" /></button>
-        <span class="chapter-toolbar-divider" aria-hidden="true" />
-      </template>
       <button type="button" data-action="annotations" @click="emit('open-sidebar', 'annotations')">
         <i class="pi pi-pencil" /> 标注 {{ props.annotationCount }}
       </button>

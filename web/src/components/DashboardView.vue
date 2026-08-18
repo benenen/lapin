@@ -225,8 +225,10 @@ function composeAnnotation() {
   openSidebar('annotations')
 }
 
+// 取消选区 only drops the highlighted passage; the half-written note and the
+// chosen colour survive so the reader can re-select without losing their work.
 function cancelSelection() {
-  annotation.value = { start_offset: 0, end_offset: 0, quote: '', note: '', color: annotation.value.color }
+  annotation.value = { ...annotation.value, start_offset: 0, end_offset: 0, quote: '' }
 }
 
 function focusAnnotation(id: string) {

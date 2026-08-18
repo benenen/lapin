@@ -405,6 +405,26 @@ describe('DashboardView ownership editing', () => {
     expect(wrapper.get('.chapter-toolbar').classes()).toContain('is-reading')
   })
 
+  it('keeps the drafted note when only the selection is cancelled', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('selection', {
+      start_offset: 0,
+      end_offset: 3,
+      quote: '上下文',
+    })
+    await flushPromises()
+    await wrapper.get('.chapter-toolbar button[data-color="green"]').trigger('click')
+    await wrapper.get('.annotation-composer .rich-editor').setValue('<p>写了一半的笔记</p>')
+
+    await wrapper.get('.chapter-toolbar button[data-action="cancel"]').trigger('click')
+
+    expect(wrapper.get('.chapter-toolbar').classes()).toContain('is-reading')
+    expect((wrapper.get('.annotation-composer .rich-editor').element as HTMLTextAreaElement).value).toBe('<p>写了一半的笔记</p>')
+    expect(wrapper.get('.annotation-composer button[data-color="green"]').classes()).toContain('active')
+  })
+
   it('clears a pending selection and the highlight when the reader changes chapter', async () => {
     apiMock.getSubject.mockResolvedValueOnce(twoChapterSubject())
     const wrapper = mountDashboard()
