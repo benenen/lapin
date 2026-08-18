@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 
 import { createEditorExtensions } from '../editor'
-import { annotationDecorationPlugin, annotationDecorationPluginKey, type AnnotationOffsets } from '../annotationMarks'
+import { annotationDecorationPlugin, annotationDecorationPluginKey, leafText, type AnnotationOffsets } from '../annotationMarks'
 
 const props = withDefaults(defineProps<{ content: string; annotations?: AnnotationOffsets[] }>(), {
   annotations: () => [],
@@ -56,12 +56,6 @@ function handleClick(event: MouseEvent) {
 function emitSelection(current: Editor) {
   const { from, to } = current.state.selection
   if (from === to) return
-  const leafText = (node: { type: { name: string }; attrs: Record<string, unknown> }) => {
-    if (node.type.name === 'inlineMath' || node.type.name === 'blockMath') {
-      return String(node.attrs.latex ?? '')
-    }
-    return ''
-  }
   const quote = current.state.doc.textBetween(from, to, '', leafText)
   if (!quote) return
   const prefix = current.state.doc.textBetween(0, from, '', leafText)

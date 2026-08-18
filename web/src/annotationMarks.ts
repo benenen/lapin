@@ -7,6 +7,9 @@ export interface AnnotationOffsets {
   start_offset: number
   end_offset: number
   color: string
+  // The passage the offsets were measured against. Present on every stored annotation, so a
+  // range whose text no longer matches means the chapter moved underneath it.
+  quote?: string
 }
 
 export interface AnnotationRange {
@@ -21,8 +24,9 @@ const ANNOTATION_COLORS = new Set(['yellow', 'green', 'blue', 'pink'])
 export const annotationDecorationPluginKey = new PluginKey('lapinAnnotationDecorations')
 
 // The selection contract in RichTextContent measures offsets with textBetween(…, '', leafText),
-// so the reverse mapping has to walk the document with exactly the same accounting.
-function leafText(node: ProseMirrorNode): string {
+// so the reverse mapping has to walk the document with exactly the same accounting. Both sides
+// import this one function: two copies drifting apart would silently misplace every mark.
+export function leafText(node: ProseMirrorNode): string {
   if (node.type.name === 'inlineMath' || node.type.name === 'blockMath') {
     return String(node.attrs.latex ?? '')
   }
@@ -77,6 +81,10 @@ export function annotationDecorationRanges(doc: ProseMirrorNode, annotations: re
     const from = positionAt(markers, doc, start)
     const to = positionAt(markers, doc, end)
     if (from === null || to === null || to <= from) continue
+    // An edited chapter — or a repeated OpenAPI import, which keeps interaction records while the
+    // content changes — leaves the offsets in range but pointing at a different passage. Painting
+    // there would highlight words the annotation never quoted, so drop the anchor instead.
+    if (annotation.quote && doc.textBetween(from, to, '', leafText) !== annotation.quote) continue
     ranges.push({
       id: annotation.id,
       from,

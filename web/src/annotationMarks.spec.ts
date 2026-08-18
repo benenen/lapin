@@ -57,6 +57,33 @@ describe('annotation decoration ranges', () => {
     expect(annotationDecorationRanges(doc, [annotation('a', 900, 950)])).toEqual([])
   })
 
+  // An owner edit or a repeated OpenAPI import keeps the annotation but moves the chapter text.
+  // The offsets stay inside the document, so only the quote can tell that they no longer match.
+  it('skips an annotation whose quote no longer matches the offsets', () => {
+    const doc = docOf('前言。上下文工程是核心。')
+
+    const stale = annotationDecorationRanges(doc, [{ ...annotation('a', 0, 5), quote: '上下文工程' }])
+
+    expect(stale).toEqual([])
+    expect(doc.textBetween(1, 6, '', () => '')).toBe('前言。上下')
+  })
+
+  it('renders an annotation whose quote still matches the offsets', () => {
+    const doc = docOf('前言。上下文工程是核心。')
+
+    const ranges = annotationDecorationRanges(doc, [{ ...annotation('a', 3, 8), quote: '上下文工程' }])
+
+    expect(ranges).toHaveLength(1)
+    expect(doc.textBetween(ranges[0]!.from, ranges[0]!.to, '', () => '')).toBe('上下文工程')
+  })
+
+  it('still renders an annotation stored without a quote', () => {
+    const doc = docOf('上下文工程是核心。')
+
+    expect(annotationDecorationRanges(doc, [annotation('a', 0, 5)])).toHaveLength(1)
+    expect(annotationDecorationRanges(doc, [{ ...annotation('b', 0, 5), quote: '' }])).toHaveLength(1)
+  })
+
   it('skips empty and reversed ranges', () => {
     const doc = docOf('上下文工程是核心。')
 
