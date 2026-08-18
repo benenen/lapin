@@ -73,6 +73,13 @@ describe('ChapterToolbar', () => {
     expect(wrapper.emitted('save-whiteboard')).toHaveLength(1)
   })
 
+  it('drops the discussion button while the whiteboard is open', () => {
+    const wrapper = mountToolbar({ mode: 'whiteboard' })
+
+    expect(wrapper.find('button[data-action="comments"]').exists()).toBe(false)
+    expect(wrapper.find('button[data-action="annotations"]').exists()).toBe(true)
+  })
+
   it('disables saving the whiteboard while a save is in flight', () => {
     const wrapper = mountToolbar({ mode: 'whiteboard', saving: true })
 
@@ -81,6 +88,12 @@ describe('ChapterToolbar', () => {
 
   it('blocks the whiteboard until persisted data has loaded', () => {
     const wrapper = mountToolbar({ whiteboardDisabled: true })
+
+    expect(wrapper.get('button[data-action="whiteboard"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('blocks the whiteboard while persisted data is still loading', () => {
+    const wrapper = mountToolbar({ whiteboardDisabled: false, whiteboardLoading: true })
 
     expect(wrapper.get('button[data-action="whiteboard"]').attributes('disabled')).toBeDefined()
   })

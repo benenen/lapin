@@ -168,6 +168,8 @@ button, input, textarea { font: inherit; }
 .chapter-toolbar button { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .8rem; border: 0; border-radius: 999px; color: #33483e; background: transparent; cursor: pointer; transition: background .15s ease; }
 .chapter-toolbar button:hover:not(:disabled) { background: #eceade; }
 .chapter-toolbar button.active { color: #fbfaf6; background: #33483e; }
+.chapter-toolbar button.chapter-toolbar-primary { color: #fbfaf6; background: #33483e; }
+.chapter-toolbar button.chapter-toolbar-primary:hover:not(:disabled) { background: #24352d; }
 .chapter-toolbar button:disabled { opacity: .45; cursor: not-allowed; }
 .chapter-toolbar-divider { width: 1px; height: 1.4rem; background: #dcddd4; }
 .chapter-toolbar-quote { max-width: 16rem; overflow: hidden; padding-left: .5rem; color: #6d664f; white-space: nowrap; text-overflow: ellipsis; }
