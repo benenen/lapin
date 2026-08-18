@@ -46,6 +46,19 @@ const subject = {
   }],
 }
 
+const annotationRecord = {
+  id: 'note-1',
+  chapter_id: 'chapter-id',
+  user_id: user.id,
+  author_name: user.name,
+  start_offset: 0,
+  end_offset: 3,
+  quote: '正文片段',
+  note: '<p>旧笔记</p>',
+  color: 'yellow',
+  created_at: '2026-08-17T00:00:00Z',
+}
+
 const stubs = {
   Avatar: { template: '<span />' },
   Button: {
@@ -72,7 +85,12 @@ const stubs = {
   Select: { template: '<select />' },
   Tag: { props: ['value'], template: '<span>{{ value }}</span>' },
   RichTextContent: { template: '<div />' },
-  ExcalidrawWhiteboard: { props: ['active', 'modelValue'], template: '<div data-testid="excalidraw-whiteboard" :data-active="String(active)" :data-revision="modelValue?.anchor?.content_revision || \x27\x27" />' },
+  ExcalidrawWhiteboard: {
+    name: 'ExcalidrawWhiteboard',
+    props: ['chapterId', 'content', 'active', 'annotations', 'modelValue'],
+    emits: ['selection', 'annotation-click', 'save'],
+    template: '<div data-testid="excalidraw-whiteboard" :data-active="String(active)" :data-revision="modelValue?.anchor?.content_revision || \x27\x27" />',
+  },
   RichTextEditor: {
     props: ['modelValue'],
     emits: ['update:modelValue'],
@@ -80,12 +98,19 @@ const stubs = {
   },
 }
 
+function mountDashboard(subjectId = subject.id) {
+  return mount(DashboardView, {
+    props: { user, subjectId },
+    global: { stubs },
+  })
+}
+
 describe('DashboardView ownership editing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     apiMock.listSubjects.mockResolvedValue([{ ...subject, chapters: undefined }])
     apiMock.getSubject.mockResolvedValue(subject)
-    apiMock.listAnnotations.mockResolvedValue([])
+    apiMock.listAnnotations.mockResolvedValue([annotationRecord])
     apiMock.listWhiteboards.mockResolvedValue([])
     apiMock.listComments.mockResolvedValue([])
     apiMock.updateSubject.mockImplementation(async (_id, input) => ({ ...subject, ...input }))
@@ -93,10 +118,7 @@ describe('DashboardView ownership editing', () => {
   })
 
   it('lets the owner edit the selected subject and active chapter', async () => {
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
     const editSubject = wrapper.findAll('button').find((button) => button.text() === '编辑科目')
@@ -141,10 +163,7 @@ describe('DashboardView ownership editing', () => {
 
   it('does not show edit actions to another learner', async () => {
     apiMock.getSubject.mockResolvedValue({ ...subject, owner_id: 'another-user' })
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('编辑科目')
@@ -159,10 +178,7 @@ describe('DashboardView ownership editing', () => {
         { ...subject.chapters[0], id: 'child-chapter', parent_id: 'chapter-id', title: '子章节', position: 1 },
       ],
     })
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
     expect(wrapper.find('nav[aria-label="章节"] [role="tree"]').exists()).toBe(true)
@@ -171,10 +187,7 @@ describe('DashboardView ownership editing', () => {
   })
 
   it('loads the exact subject from a changed detail route', async () => {
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
     apiMock.getSubject.mockResolvedValueOnce({
@@ -193,10 +206,7 @@ describe('DashboardView ownership editing', () => {
 
   it('shows a return link when the requested subject cannot be opened', async () => {
     apiMock.getSubject.mockRejectedValueOnce(new Error('not found'))
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: 'missing-subject' },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard('missing-subject')
     await flushPromises()
 
     expect(wrapper.text()).toContain('无法打开这个科目')
@@ -204,85 +214,62 @@ describe('DashboardView ownership editing', () => {
   })
 
   it('keeps the transparent whiteboard hidden over the chapter until requested', async () => {
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
-    const tabLabels = wrapper.findAll('[role="tablist"] button').map((button) => button.text())
-    expect(tabLabels).not.toContain('白板')
     expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('false')
-    expect(wrapper.text()).not.toContain('选中')
+    expect(wrapper.find('.chapter-toolbar-quote').exists()).toBe(false)
 
-    const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
-    expect(showButton).toBeDefined()
-    await showButton!.trigger('click')
+    const showButton = wrapper.get('[data-action="whiteboard"]')
+    await showButton.trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('true')
-    expect(wrapper.text()).toContain('隐藏白板')
+    expect(wrapper.get('[data-action="whiteboard"]').classes()).toContain('active')
     expect(wrapper.text()).not.toContain('我的白板')
     expect(wrapper.text()).not.toContain('白板内容仅你自己可见')
 
-    const whiteboard = wrapper.get('[data-testid="excalidraw-whiteboard"]')
-    whiteboard.element.setAttribute('data-session-probe', 'preserved')
-    const commentsTab = wrapper.findAll('[role="tablist"] button').find((button) => button.text().includes('讨论'))
-    await commentsTab!.trigger('click')
+    wrapper.get('[data-testid="excalidraw-whiteboard"]').element.setAttribute('data-session-probe', 'preserved')
+    await wrapper.get('[data-tab="comments"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-session-probe')).toBe('preserved')
-
-    const notesTab = wrapper.findAll('[role="tablist"] button').find((button) => button.text().includes('正文与标注'))
-    await notesTab!.trigger('click')
-    await flushPromises()
-    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-session-probe')).toBe('preserved')
+    expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('true')
   })
 
   it('does not open an empty whiteboard before persisted data finishes loading', async () => {
     let resolveWhiteboards: (value: never[]) => void = () => {}
     apiMock.listWhiteboards.mockReturnValueOnce(new Promise<never[]>((resolve) => { resolveWhiteboards = resolve }))
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
-    const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
-    expect(showButton?.element.disabled).toBe(true)
+    const showButton = () => wrapper.get('[data-action="whiteboard"]').element as HTMLButtonElement
+    expect(showButton().disabled).toBe(true)
     expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('false')
 
     resolveWhiteboards([])
     await flushPromises()
-    expect(showButton?.element.disabled).toBe(false)
+    expect(showButton().disabled).toBe(false)
   })
 
   it('allows the whiteboard when an unrelated chapter interaction fails', async () => {
     apiMock.listComments.mockRejectedValueOnce(new Error('comments unavailable'))
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
-    const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
-    expect(showButton?.element.disabled).toBe(false)
+    expect((wrapper.get('[data-action="whiteboard"]').element as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('offers a retry when persisted whiteboards fail to load', async () => {
     apiMock.listWhiteboards.mockRejectedValueOnce(new Error('whiteboards unavailable')).mockResolvedValueOnce([])
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
-    const retry = wrapper.findAll('button').find((button) => button.text() === '重试加载白板')
-    expect(retry).toBeDefined()
-    await retry!.trigger('click')
+    const retry = wrapper.get('[data-action="retry-whiteboard"]')
+    expect(retry.text()).toContain('重试白板')
+    await retry.trigger('click')
     await flushPromises()
 
-    const showButton = wrapper.findAll('button').find((button) => button.text() === '显示白板')
-    expect(showButton?.element.disabled).toBe(false)
+    expect((wrapper.get('[data-action="whiteboard"]').element as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('ignores an older response after navigating away and back to the same chapter', async () => {
@@ -298,10 +285,7 @@ describe('DashboardView ownership editing', () => {
       }
       return Promise.resolve([])
     })
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
     const chapterButtons = () => wrapper.findAll('.chapter-tree-label')
@@ -317,20 +301,51 @@ describe('DashboardView ownership editing', () => {
   })
 
   it('uses rich-text editors for annotations and discussions', async () => {
-    const wrapper = mount(DashboardView, {
-      props: { user, subjectId: subject.id },
-      global: { stubs },
-    })
+    const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(wrapper.find('.annotation-panel .rich-editor').exists()).toBe(true)
+    expect(wrapper.find('.annotation-composer .rich-editor').exists()).toBe(true)
 
-    const commentsTab = wrapper.findAll('[role="tablist"] button').find((button) => button.text().includes('讨论'))
-    expect(commentsTab).toBeDefined()
-    await commentsTab!.trigger('click')
+    await wrapper.get('[data-tab="comments"]').trigger('click')
 
     expect(wrapper.find('.comment-compose .rich-editor').exists()).toBe(true)
     expect(wrapper.find('.comment-compose textarea:not(.rich-editor)').exists()).toBe(false)
+  })
+
+  it('turns a chapter selection into a composed annotation', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await wrapper.get('.annotation-sidebar-handle').trigger('click')
+    wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('selection', {
+      start_offset: 0,
+      end_offset: 3,
+      quote: '上下文',
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.chapter-toolbar-quote').text()).toContain('上下文')
+    await wrapper.get('.chapter-toolbar button[data-color="green"]').trigger('click')
+    await wrapper.get('.chapter-toolbar button[data-action="compose"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
+    expect(wrapper.get('.annotation-composer blockquote').text()).toContain('上下文')
+    expect(wrapper.get('.annotation-composer button[data-color="green"]').classes()).toContain('active')
+  })
+
+  it('opens the sidebar on the annotation clicked in the chapter text', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await wrapper.get('.annotation-sidebar-handle').trigger('click')
+    expect(wrapper.get('.annotation-sidebar').classes()).toContain('is-collapsed')
+
+    wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('annotation-click', 'note-1')
+    await flushPromises()
+
+    expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
+    expect(wrapper.get('[data-annotation-card="note-1"]').classes()).toContain('is-active')
   })
 })
 

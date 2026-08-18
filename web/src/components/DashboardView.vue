@@ -13,8 +13,9 @@ import { api } from '../api'
 import lapinLogo from '../assets/lapin-logo.svg'
 import { buildChapterTree } from '../chapterTree'
 import type { AccessToken, Annotation, Comment, PersistedWhiteboardData, Subject, User, Whiteboard, WhiteboardData } from '../types'
+import AnnotationSidebar from './AnnotationSidebar.vue'
+import ChapterToolbar from './ChapterToolbar.vue'
 import ChapterTree from './ChapterTree.vue'
-import RichTextContent from './RichTextContent.vue'
 import RichTextEditor from './RichTextEditor.vue'
 
 const ExcalidrawWhiteboard = defineAsyncComponent(() => import('./ExcalidrawWhiteboard.vue'))
@@ -24,8 +25,11 @@ const emit = defineEmits<{ logout: [] }>()
 
 const selectedSubject = ref<Subject | null>(null)
 const activeChapterId = ref('')
-const activeTab = ref<'notes' | 'comments'>('notes')
 const whiteboardVisible = ref(false)
+const sidebarOpen = ref(true)
+const sidebarTab = ref<'annotations' | 'comments'>('annotations')
+const activeAnnotationId = ref('')
+const whiteboardRef = ref<InstanceType<typeof ExcalidrawWhiteboard> | null>(null)
 const loading = ref(true)
 const error = ref('')
 
@@ -61,6 +65,11 @@ const activeChapter = computed(() => selectedSubject.value?.chapters?.find((chap
 const ownWhiteboard = computed<PersistedWhiteboardData | null>(() => whiteboards.value.find((board) => board.user_id === props.user.id)?.data ?? null)
 const isOwner = computed(() => selectedSubject.value?.owner_id === props.user.id)
 const chapterTreeNodes = computed(() => buildChapterTree(selectedSubject.value?.chapters ?? []))
+const toolbarMode = computed<'reading' | 'selecting' | 'whiteboard'>(() => {
+  if (annotation.value.quote) return 'selecting'
+  if (whiteboardVisible.value) return 'whiteboard'
+  return 'reading'
+})
 
 onMounted(() => void openSubject(props.subjectId))
 
@@ -74,6 +83,8 @@ watch(activeChapterId, (id) => {
   annotations.value = []
   whiteboards.value = []
   comments.value = []
+  activeAnnotationId.value = ''
+  cancelSelection()
   if (!id) return
   void loadChapterInteractions(id)
   void loadWhiteboards(id)
@@ -205,12 +216,31 @@ function captureSelection(selection: { start_offset: number; end_offset: number;
   }
 }
 
+function openSidebar(tab: 'annotations' | 'comments') {
+  sidebarTab.value = tab
+  sidebarOpen.value = true
+}
+
+function composeAnnotation() {
+  openSidebar('annotations')
+}
+
+function cancelSelection() {
+  annotation.value = { start_offset: 0, end_offset: 0, quote: '', note: '', color: annotation.value.color }
+}
+
+function focusAnnotation(id: string) {
+  activeAnnotationId.value = id
+  openSidebar('annotations')
+}
+
 async function saveAnnotation() {
   if (!activeChapter.value) return
   try {
     const created = await api.createAnnotation(activeChapter.value.id, annotation.value)
     annotations.value = [created, ...annotations.value]
     annotation.value = { start_offset: 0, end_offset: 0, quote: '', note: '', color: 'yellow' }
+    activeAnnotationId.value = created.id
   } catch (caught) {
     showError(caught)
   }
@@ -277,13 +307,6 @@ function showError(caught: unknown) {
   error.value = caught instanceof Error ? caught.message : '操作失败'
   window.setTimeout(() => { error.value = '' }, 5000)
 }
-
-function setActiveTab(tab: string) {
-  if (tab === 'notes' || tab === 'comments') {
-    activeTab.value = tab
-    if (tab === 'comments') whiteboardVisible.value = false
-  }
-}
 </script>
 
 <template>
@@ -327,81 +350,55 @@ function setActiveTab(tab: string) {
               <div class="chapter-title"><span>第 {{ activeChapter.position + 1 }} 章</span><h2>{{ activeChapter.title }}</h2></div>
               <Button v-if="isOwner" label="编辑章节" icon="pi pi-pencil" severity="secondary" text @click="openEditChapter" />
             </div>
-            <div class="study-tabs" role="tablist">
-              <button v-for="tab in [
-                { key: 'notes', label: '正文与标注', icon: 'pi-bookmark' },
-                { key: 'comments', label: `讨论 ${comments.length}`, icon: 'pi-comments' },
-              ]" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" @click="setActiveTab(tab.key)">
-                <i class="pi" :class="tab.icon" /> {{ tab.label }}
-              </button>
-            </div>
-
-            <section v-show="activeTab === 'notes'" class="notes-grid">
+            <section class="notes-grid">
               <div class="chapter-document">
-                <div class="chapter-document-actions">
-                  <Button
-                    v-if="whiteboardLoadError"
-                    label="重试加载白板"
-                    icon="pi pi-refresh"
-                    severity="secondary"
-                    outlined
-                    size="small"
-                    :loading="whiteboardLoading"
-                    @click="loadWhiteboards(activeChapter.id)"
-                  />
-                  <Button
-                    v-else
-                    :label="whiteboardVisible ? '隐藏白板' : '显示白板'"
-                    :icon="whiteboardVisible ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                    severity="secondary"
-                    outlined
-                    size="small"
-                    :loading="whiteboardLoading"
-                    :disabled="!whiteboardsLoaded"
-                    @click="whiteboardVisible = !whiteboardVisible"
-                  />
-                </div>
                 <ExcalidrawWhiteboard
+                  ref="whiteboardRef"
                   :chapter-id="activeChapter.id"
                   :content="activeChapter.content"
                   :active="whiteboardVisible && whiteboardsLoaded"
+                  :annotations="annotations"
                   :model-value="ownWhiteboard"
-                  :saving="whiteboardSaving"
                   @selection="captureSelection"
+                  @annotation-click="focusAnnotation"
                   @save="saveWhiteboard"
                 />
+                <ChapterToolbar
+                  :mode="toolbarMode"
+                  :annotation-count="annotations.length"
+                  :comment-count="comments.length"
+                  :quote="annotation.quote"
+                  :color="annotation.color"
+                  :whiteboard-disabled="!whiteboardsLoaded"
+                  :whiteboard-loading="whiteboardLoading"
+                  :whiteboard-error="Boolean(whiteboardLoadError)"
+                  :saving="whiteboardSaving"
+                  @toggle-whiteboard="whiteboardVisible = !whiteboardVisible"
+                  @retry-whiteboard="loadWhiteboards(activeChapter.id)"
+                  @open-sidebar="openSidebar"
+                  @pick-color="annotation.color = $event"
+                  @compose-annotation="composeAnnotation"
+                  @cancel-selection="cancelSelection"
+                  @undo="whiteboardRef?.undo()"
+                  @redo="whiteboardRef?.redo()"
+                  @clear="whiteboardRef?.clear()"
+                  @save-whiteboard="whiteboardRef?.save()"
+                />
               </div>
-              <aside class="annotation-panel">
-                <h3>新建标注</h3>
-                <blockquote v-if="annotation.quote">“{{ annotation.quote }}”</blockquote>
-                <RichTextEditor v-model="annotation.note" class="compact-rich-text-editor" />
-                <div class="annotation-actions">
-                  <div class="annotation-colors">
-                    <button v-for="color in ['yellow', 'green', 'blue', 'pink']" :key="color" type="button" :class="[color, { active: annotation.color === color }]" @click="annotation.color = color" />
-                  </div>
-                  <Button label="保存标注" size="small" :disabled="!annotation.note.trim()" @click="saveAnnotation" />
-                </div>
-                <div class="annotation-list">
-                  <div v-for="item in annotations" :key="item.id" class="annotation-card" :class="item.color">
-                    <small>{{ item.author_name }} · {{ new Date(item.created_at).toLocaleString() }}</small>
-                    <q v-if="item.quote">{{ item.quote }}</q>
-                    <RichTextContent :content="item.note" />
-                  </div>
-                </div>
-              </aside>
-            </section>
-
-            <section v-show="activeTab === 'comments'" class="comments-panel">
-              <div class="comment-compose">
-                <Avatar :label="user.name.slice(0, 1)" shape="circle" />
-                <RichTextEditor v-model="commentBody" class="compact-rich-text-editor" />
-                <Button label="发送" icon="pi pi-send" :disabled="!commentBody.trim()" @click="postComment" />
-              </div>
-              <div v-if="comments.length === 0" class="empty-comments">还没有讨论，来提出第一个问题吧。</div>
-              <div v-for="comment in comments" :key="comment.id" class="comment-item">
-                <Avatar :label="comment.author_name.slice(0, 1)" shape="circle" />
-                <div><strong>{{ comment.author_name }}</strong><small>{{ new Date(comment.created_at).toLocaleString() }}</small><RichTextContent :content="comment.body" /></div>
-              </div>
+              <AnnotationSidebar
+                v-model:open="sidebarOpen"
+                v-model:tab="sidebarTab"
+                :annotations="annotations"
+                :comments="comments"
+                :draft="{ quote: annotation.quote, note: annotation.note, color: annotation.color }"
+                :active-annotation-id="activeAnnotationId"
+                :comment-body="commentBody"
+                :user-name="user.name"
+                @update:draft="annotation = { ...annotation, ...$event }"
+                @update:comment-body="commentBody = $event"
+                @save-annotation="saveAnnotation"
+                @post-comment="postComment"
+              />
             </section>
           </article>
           <div v-else class="empty-study"><i class="pi pi-file-edit" /><h3>还没有章节</h3><p>科目所有者可以添加第一章。</p></div>

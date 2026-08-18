@@ -117,10 +117,7 @@ button, input, textarea { font: inherit; }
 .chapter-title span { color: #a17d36; font-size: .73rem; font-weight: 800; letter-spacing: .1em; }
 .chapter-title h2 { margin: .3rem 0 1.5rem; font-family: Georgia, serif; font-size: 2rem; }
 .chapter-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.study-tabs { display: flex; gap: .2rem; margin-bottom: 1.8rem; border-bottom: 1px solid #d9d9d0; }
-.study-tabs button { padding: .8rem 1rem; border: 0; border-bottom: 2px solid transparent; color: #788078; background: transparent; cursor: pointer; }
-.study-tabs button.active { border-bottom-color: #c6963c; color: #23473a; font-weight: 750; }
-.notes-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(17rem, .75fr); gap: 2rem; }
+.notes-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2rem; align-items: start; }
 .chapter-content { margin: 0; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; font-size: 1.08rem; line-height: 2; white-space: normal; }
 .chapter-content .tiptap { outline: none; }
 .autosize-rich-text, .autosize-rich-text .tiptap { height: auto; min-height: 0; }
@@ -131,9 +128,6 @@ button, input, textarea { font: inherit; }
 .chapter-content .tiptap a { color: #2f6ca3; }
 .chapter-content .tiptap img, .rich-text-editor .tiptap img { display: block; width: auto; max-width: 100%; height: auto; margin: 1.25rem auto; border-radius: 8px; box-shadow: 0 4px 16px rgb(31 55 46 / 10%); }
 .chapter-content::selection, .chapter-content .tiptap ::selection { background: #f3d989; }
-.annotation-panel { padding: 1.2rem; border: 1px solid #dcddd4; border-radius: 12px; background: #fbfaf6; }
-.annotation-panel h3 { margin-top: 0; font-family: Georgia, serif; }
-.annotation-panel blockquote { margin: .7rem 0; padding: .7rem; border-left: 3px solid #d5ad52; color: #6d664f; background: #f8f1d9; }
 .annotation-actions { display: flex; align-items: center; justify-content: space-between; margin-top: .7rem; }
 .annotation-colors { display: flex; gap: .35rem; }
 .annotation-colors button { width: 1.25rem; height: 1.25rem; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
@@ -186,7 +180,6 @@ button, input, textarea { font: inherit; }
 .excalidraw-host .lapin-toolbar-icon, .excalidraw-host .lapin-toolbar-icon svg { display: block; width: 20px; height: 20px; }
 .excalidraw-host .lapin-toolbar-drag-handle { cursor: grab; touch-action: none; }
 .excalidraw-host .lapin-toolbar-drag-handle:active { cursor: grabbing; }
-.chapter-document-actions { display: flex; justify-content: flex-end; margin-bottom: .8rem; }
 .chapter-toolbar { position: sticky; bottom: 1.5rem; z-index: 30; display: flex; align-items: center; justify-content: center; gap: .35rem; width: max-content; max-width: 100%; margin: 1.5rem auto 0; padding: .35rem .5rem; border: 1px solid #dcddd4; border-radius: 999px; background: rgba(251, 250, 246, .86); box-shadow: 0 6px 20px rgba(51, 72, 62, .14); backdrop-filter: blur(12px); transition: width .2s ease; }
 .chapter-toolbar button { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .8rem; border: 0; border-radius: 999px; color: #33483e; background: transparent; cursor: pointer; transition: background .15s ease; }
 .chapter-toolbar button:hover:not(:disabled) { background: #eceade; }
@@ -261,6 +254,6 @@ button, input, textarea { font: inherit; }
   .subject-main { width: 100%; }.subject-header { min-height: auto; align-items: flex-start; padding: 1.5rem; }.subject-header h1 { font-size: 2rem; }
   .study-layout { display: block; }.chapter-nav { min-height: 0; max-height: 18rem; overflow: auto; padding: .7rem; border-right: 0; border-bottom: 1px solid #ddd; }
   .chapter-nav > .eyebrow { display: none; }
-  .study-area { padding: 1.3rem .9rem 3rem; }.study-tabs { overflow-x: auto; }.study-tabs button { flex: 0 0 auto; padding-inline: .7rem; }
+  .study-area { padding: 1.3rem .9rem 3rem; }
   .comment-compose { grid-template-columns: 1fr; }.comment-compose .p-avatar { display: none; }
 }
