@@ -42,9 +42,12 @@ describe('annotation decoration ranges', () => {
   it('counts math nodes by their latex, matching the selection contract', () => {
     const doc = docOf('设 $a+b$ 成立。')
 
-    const ranges = annotationDecorationRanges(doc, [annotation('a', 0, 1)])
+    // "设 " (offsets 0-2) + inlineMath latex "a+b" (offsets 2-5, length 3) must both be
+    // counted for offset 5 to land exactly after the math node. If the math node's latex
+    // length were not counted, this range would spill into the following text node instead.
+    const ranges = annotationDecorationRanges(doc, [annotation('a', 0, 5)])
 
-    expect(doc.textBetween(ranges[0]!.from, ranges[0]!.to, '', () => '')).toBe('设')
+    expect(doc.textBetween(ranges[0]!.from, ranges[0]!.to, '', () => '')).toBe('设 ')
   })
 
   it('skips annotations that no longer fit the chapter text', () => {
