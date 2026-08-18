@@ -9,6 +9,7 @@ const apiMock = vi.hoisted(() => ({
   listAnnotations: vi.fn(),
   listWhiteboards: vi.fn(),
   listComments: vi.fn(),
+  createAnnotation: vi.fn(),
   updateSubject: vi.fn(),
   updateChapter: vi.fn(),
 }))
@@ -105,6 +106,23 @@ function mountDashboard(subjectId = subject.id) {
   })
 }
 
+function twoChapterSubject() {
+  return {
+    ...subject,
+    chapters: [subject.chapters[0], { ...subject.chapters[0], id: 'chapter-b', title: '第二章', position: 1 }],
+  }
+}
+
+async function openChapter(wrapper: ReturnType<typeof mountDashboard>, title: string) {
+  await wrapper.findAll('.chapter-tree-label').find((button) => button.text().includes(title))!.trigger('click')
+  await flushPromises()
+}
+
+async function saveDraft(wrapper: ReturnType<typeof mountDashboard>, note: string) {
+  await wrapper.get('.annotation-composer .rich-editor').setValue(note)
+  await wrapper.findAll('.annotation-composer button').find((button) => button.text() === '保存标注')!.trigger('click')
+}
+
 describe('DashboardView ownership editing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -113,6 +131,12 @@ describe('DashboardView ownership editing', () => {
     apiMock.listAnnotations.mockResolvedValue([annotationRecord])
     apiMock.listWhiteboards.mockResolvedValue([])
     apiMock.listComments.mockResolvedValue([])
+    apiMock.createAnnotation.mockImplementation(async (chapterId, input) => ({
+      ...annotationRecord,
+      ...input,
+      id: 'note-2',
+      chapter_id: chapterId,
+    }))
     apiMock.updateSubject.mockImplementation(async (_id, input) => ({ ...subject, ...input }))
     apiMock.updateChapter.mockImplementation(async (_id, input) => ({ ...subject.chapters[0], ...input }))
   })
@@ -273,8 +297,7 @@ describe('DashboardView ownership editing', () => {
   })
 
   it('ignores an older response after navigating away and back to the same chapter', async () => {
-    const chapterB = { ...subject.chapters[0], id: 'chapter-b', title: '第二章', position: 1 }
-    apiMock.getSubject.mockResolvedValueOnce({ ...subject, chapters: [subject.chapters[0], chapterB] })
+    apiMock.getSubject.mockResolvedValueOnce(twoChapterSubject())
     let resolveFirstA: (value: unknown[]) => void = () => {}
     let aRequests = 0
     apiMock.listWhiteboards.mockImplementation((chapterId: string) => {
@@ -288,11 +311,8 @@ describe('DashboardView ownership editing', () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
-    const chapterButtons = () => wrapper.findAll('.chapter-tree-label')
-    await chapterButtons().find((button) => button.text().includes('第二章'))!.trigger('click')
-    await flushPromises()
-    await chapterButtons().find((button) => button.text().includes('旧章节'))!.trigger('click')
-    await flushPromises()
+    await openChapter(wrapper, '第二章')
+    await openChapter(wrapper, '旧章节')
     expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-revision')).toBe('new-revision')
 
     resolveFirstA([whiteboardRecord('old-revision')])
@@ -346,6 +366,104 @@ describe('DashboardView ownership editing', () => {
 
     expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
     expect(wrapper.get('[data-annotation-card="note-1"]').classes()).toContain('is-active')
+  })
+
+  it('opens the sidebar from the toolbar on the requested tab', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await wrapper.get('.annotation-sidebar-handle').trigger('click')
+    expect(wrapper.get('.annotation-sidebar').classes()).toContain('is-collapsed')
+
+    await wrapper.get('.chapter-toolbar button[data-action="comments"]').trigger('click')
+    expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
+    expect(wrapper.get('[data-tab="comments"]').classes()).toContain('active')
+    expect(wrapper.find('.comment-compose').exists()).toBe(true)
+
+    await wrapper.get('.annotation-sidebar-handle').trigger('click')
+    await wrapper.get('.chapter-toolbar button[data-action="annotations"]').trigger('click')
+    expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
+    expect(wrapper.get('[data-tab="annotations"]').classes()).toContain('active')
+    expect(wrapper.find('.annotation-composer').exists()).toBe(true)
+  })
+
+  it('returns the toolbar to reading when the selection is cancelled', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('selection', {
+      start_offset: 0,
+      end_offset: 3,
+      quote: '上下文',
+    })
+    await flushPromises()
+    expect(wrapper.get('.chapter-toolbar-quote').text()).toContain('上下文')
+
+    await wrapper.get('.chapter-toolbar button[data-action="cancel"]').trigger('click')
+
+    expect(wrapper.find('.chapter-toolbar-quote').exists()).toBe(false)
+    expect(wrapper.get('.chapter-toolbar').classes()).toContain('is-reading')
+  })
+
+  it('clears a pending selection and the highlight when the reader changes chapter', async () => {
+    apiMock.getSubject.mockResolvedValueOnce(twoChapterSubject())
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    const whiteboard = wrapper.getComponent({ name: 'ExcalidrawWhiteboard' })
+    whiteboard.vm.$emit('selection', { start_offset: 0, end_offset: 3, quote: '上下文' })
+    whiteboard.vm.$emit('annotation-click', 'note-1')
+    await flushPromises()
+    expect(wrapper.get('.chapter-toolbar-quote').text()).toContain('上下文')
+    expect(wrapper.get('[data-annotation-card="note-1"]').classes()).toContain('is-active')
+
+    await openChapter(wrapper, '第二章')
+
+    expect(wrapper.find('.chapter-toolbar-quote').exists()).toBe(false)
+    expect(wrapper.get('[data-annotation-card="note-1"]').classes()).not.toContain('is-active')
+  })
+
+  it('highlights the annotation it just saved', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    wrapper.getComponent({ name: 'ExcalidrawWhiteboard' }).vm.$emit('selection', {
+      start_offset: 0,
+      end_offset: 3,
+      quote: '上下文',
+    })
+    await flushPromises()
+    await saveDraft(wrapper, '<p>新笔记</p>')
+    await flushPromises()
+
+    expect(apiMock.createAnnotation).toHaveBeenCalledWith('chapter-id', {
+      start_offset: 0,
+      end_offset: 3,
+      quote: '上下文',
+      note: '<p>新笔记</p>',
+      color: 'yellow',
+    })
+    expect(wrapper.get('[data-annotation-card="note-2"]').classes()).toContain('is-active')
+    expect(wrapper.get('[data-annotation-card="note-1"]').classes()).not.toContain('is-active')
+    expect(wrapper.find('.chapter-toolbar-quote').exists()).toBe(false)
+  })
+
+  it('drops an annotation that arrives after the reader left the chapter', async () => {
+    apiMock.getSubject.mockResolvedValueOnce(twoChapterSubject())
+    let resolveSave: (value: unknown) => void = () => {}
+    apiMock.createAnnotation.mockReturnValueOnce(new Promise<unknown>((resolve) => { resolveSave = resolve }))
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await saveDraft(wrapper, '<p>新笔记</p>')
+    await openChapter(wrapper, '第二章')
+
+    resolveSave({ ...annotationRecord, id: 'note-2', chapter_id: 'chapter-id' })
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-annotation-card]')).toHaveLength(1)
+    expect(wrapper.find('[data-annotation-card="note-2"]').exists()).toBe(false)
+    expect(wrapper.get('[data-annotation-card="note-1"]').classes()).not.toContain('is-active')
   })
 })
 

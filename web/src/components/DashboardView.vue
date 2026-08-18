@@ -235,9 +235,11 @@ function focusAnnotation(id: string) {
 }
 
 async function saveAnnotation() {
-  if (!activeChapter.value) return
+  const chapter = activeChapter.value
+  if (!chapter) return
   try {
-    const created = await api.createAnnotation(activeChapter.value.id, annotation.value)
+    const created = await api.createAnnotation(chapter.id, annotation.value)
+    if (activeChapterId.value !== chapter.id) return
     annotations.value = [created, ...annotations.value]
     annotation.value = { start_offset: 0, end_offset: 0, quote: '', note: '', color: 'yellow' }
     activeAnnotationId.value = created.id
