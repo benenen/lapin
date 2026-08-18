@@ -83,7 +83,7 @@ Emits：`update:open`、`update:tab`、`update:draft`、`save-annotation`、`pos
 
 新增 `annotations` prop 与 `annotation-click` emit。用一个 ProseMirror 插件把 `annotationDecorationRanges` 的结果转成 `Decoration.inline`，带 `data-annotation-id` 与颜色 class；编辑器根节点上做 click 委托，命中最内层 `[data-annotation-id]` 时派发。`annotations` 变化时刷新装饰。
 
-标记样式：对应颜色的底色高亮，右上角小圆点角标，hover 加深。重叠标注装饰天然可叠，点击取最内层。
+标记样式：对应颜色的底色高亮，右上角小圆点角标，hover 加深。已知限制：两条标注重叠时 ProseMirror 会把它们合并成一个 span，颜色 class 叠加但只保留其中一条的 `data-annotation-id`，因此重叠区只能点开那一条。重叠标注是边缘情况，本轮不处理。
 
 ### 5. `web/src/components/DashboardView.vue`（改）
 

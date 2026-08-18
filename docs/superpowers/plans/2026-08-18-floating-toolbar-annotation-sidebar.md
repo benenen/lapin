@@ -1149,6 +1149,7 @@ git commit -m "refactor: move whiteboard history actions out of the excalidraw t
 
 **Interfaces:**
 - Consumes: Task 2 的 `ChapterToolbar`、Task 3 的 `AnnotationSidebar`、Task 4 的 `ExcalidrawWhiteboard` 新 prop / 事件 / `defineExpose`
+- 注意：Task 5 的修复删掉了 `ExcalidrawWhiteboard` 的 `saving` prop 与 bridge 的 `setSaving`（保存中的禁用反馈已由浮动栏的保存按钮承担），因此本任务不再向 `ExcalidrawWhiteboard` 传 `:saving`。
 - Produces: 无（终端组件）
 
 - [ ] **Step 1: 写失败的测试**
@@ -1225,7 +1226,7 @@ git commit -m "refactor: move whiteboard history actions out of the excalidraw t
 ```typescript
     ExcalidrawWhiteboard: {
       name: 'ExcalidrawWhiteboard',
-      props: ['chapterId', 'content', 'active', 'annotations', 'modelValue', 'saving'],
+      props: ['chapterId', 'content', 'active', 'annotations', 'modelValue'],
       template: '<div class="whiteboard-stub" />',
     },
 ```
@@ -1294,7 +1295,6 @@ function focusAnnotation(id: string) {
                   :active="whiteboardVisible && whiteboardsLoaded"
                   :annotations="annotations"
                   :model-value="ownWhiteboard"
-                  :saving="whiteboardSaving"
                   @selection="captureSelection"
                   @annotation-click="focusAnnotation"
                   @save="saveWhiteboard"
