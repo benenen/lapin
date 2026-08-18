@@ -45,27 +45,6 @@ watch(() => props.activeAnnotationId, async (id) => {
 function updateDraft(patch: Partial<AnnotationDraft>) {
   emit('update:draft', { ...props.draft, ...patch })
 }
-
-// PrimeVue's Button component does not declare `emits: ['click']`, so a
-// parent `@click` listener is both re-emitted by Button's own template and
-// applied to Button's root element via Vue's native attribute fallthrough.
-// That makes a single physical click invoke the listener twice. Guard each
-// action so one click only ever produces one outbound event.
-let saveAnnotationPending = false
-function handleSaveAnnotation() {
-  if (saveAnnotationPending) return
-  saveAnnotationPending = true
-  emit('save-annotation')
-  queueMicrotask(() => { saveAnnotationPending = false })
-}
-
-let postCommentPending = false
-function handlePostComment() {
-  if (postCommentPending) return
-  postCommentPending = true
-  emit('post-comment')
-  queueMicrotask(() => { postCommentPending = false })
-}
 </script>
 
 <template>
@@ -113,7 +92,7 @@ function handlePostComment() {
                 @click="updateDraft({ color })"
               />
             </div>
-            <Button label="保存标注" size="small" :disabled="!canSave" @click="handleSaveAnnotation" />
+            <Button label="保存标注" size="small" :disabled="!canSave" @click="emit('save-annotation')" />
           </div>
         </div>
         <div class="annotation-list">
@@ -139,7 +118,7 @@ function handlePostComment() {
             :model-value="props.commentBody"
             @update:model-value="emit('update:commentBody', $event)"
           />
-          <Button label="发送" icon="pi pi-send" :disabled="!props.commentBody.trim()" @click="handlePostComment" />
+          <Button label="发送" icon="pi pi-send" :disabled="!props.commentBody.trim()" @click="emit('post-comment')" />
         </div>
         <div v-if="props.comments.length === 0" class="empty-comments">还没有讨论，来提出第一个问题吧。</div>
         <div v-for="item in props.comments" :key="item.id" class="comment-item">

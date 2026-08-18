@@ -44,6 +44,7 @@ function mountSidebar(props: Record<string, unknown> = {}) {
         Avatar: { template: '<span />' },
         Button: {
           props: ['label', 'disabled'],
+          emits: ['click'],
           template: `<button :disabled="disabled" @click="$emit('click')">{{ label }}</button>`,
         },
         RichTextEditor: {
