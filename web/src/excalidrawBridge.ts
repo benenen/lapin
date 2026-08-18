@@ -27,7 +27,7 @@ interface MountOptions {
   data?: WhiteboardData | null
   width: number
   height: number
-  topInset: number
+  offsetTop?: () => number
   onSave?: () => void
   onReady?: () => void
   onError?: (error: Error) => void
@@ -195,10 +195,11 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
   }), options.onError)
   if (!initialData) loadFailed = true
 
+  const expectedViewport = () => excalidrawViewport(element.getBoundingClientRect().width, options.width, options.offsetTop?.() ?? 0)
+
   const resize = () => {
     if (!api) return
-    const viewportWidth = element.getBoundingClientRect().width
-    const viewport = excalidrawViewport(viewportWidth, options.width, options.topInset)
+    const viewport = expectedViewport()
     api.refresh()
     api.updateScene({
       appState: {
@@ -244,8 +245,7 @@ export function mountExcalidraw(element: HTMLElement, options: MountOptions): Ex
       renderTopRightUI,
       onScrollChange: (scrollX, scrollY, zoom) => {
         if (!api || viewportResetPending) return
-        const viewportWidth = element.getBoundingClientRect().width
-        const expected = excalidrawViewport(viewportWidth, options.width, options.topInset)
+        const expected = expectedViewport()
         if (scrollX === expected.scrollX && scrollY === expected.scrollY && zoom.value === expected.zoom) return
         viewportResetPending = true
         requestAnimationFrame(() => {

@@ -2,6 +2,11 @@ import type { LegacyTldrawWhiteboardData, WhiteboardData } from './types'
 
 export const WHITEBOARD_WIDTH = 960
 export const WHITEBOARD_MIN_HEIGHT = 640
+// Browsers cap a canvas at 65535 device pixels per side and every repaint costs the
+// whole surface, so the drawable overlay only follows the reader through a long
+// chapter instead of covering it end to end.
+export const WHITEBOARD_WINDOW_VIEWPORTS = 3
+export const WHITEBOARD_MAX_WINDOW_HEIGHT = 12000
 const SUPPORTED_EXCALIDRAW_ELEMENTS = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text'])
 
 export function isSupportedExcalidrawElement(type: string): boolean {
@@ -62,11 +67,35 @@ export function whiteboardReferenceHeight(contentHeight: number, minimumHeight =
   return Math.max(minimumHeight, measuredHeight + 80)
 }
 
-export function excalidrawViewport(viewportWidth: number, referenceWidth = WHITEBOARD_WIDTH, topInset = 0) {
+export function excalidrawViewport(viewportWidth: number, referenceWidth = WHITEBOARD_WIDTH, offsetTop = 0) {
   const zoom = viewportScale(viewportWidth, referenceWidth)
+  const offset = Number.isFinite(offsetTop) ? offsetTop : 0
   return {
     zoom,
     scrollX: 0,
-    scrollY: topInset / zoom,
+    scrollY: offset === 0 ? 0 : -offset / zoom,
   }
+}
+
+export interface WhiteboardWindow {
+  top: number
+  height: number
+}
+
+// All arguments and the result are reference-space lengths, never CSS pixels.
+export function whiteboardWindow(stageHeight: number, visibleTop: number, visibleHeight: number, currentTop: number): WhiteboardWindow {
+  const stage = Number.isFinite(stageHeight) && stageHeight > 0 ? stageHeight : 0
+  const visible = Number.isFinite(visibleHeight) && visibleHeight > 0 ? visibleHeight : 0
+  const height = Math.min(stage, Math.min(WHITEBOARD_MAX_WINDOW_HEIGHT, Math.max(WHITEBOARD_MIN_HEIGHT, visible * WHITEBOARD_WINDOW_VIEWPORTS)))
+  const maxTop = stage - height
+  if (maxTop <= 0) return { top: 0, height }
+  const anchor = Number.isFinite(visibleTop) ? visibleTop : 0
+  const margin = visible / 2
+  const held = clampWindowTop(Number.isFinite(currentTop) ? currentTop : 0, maxTop)
+  if (held <= anchor - margin && held + height >= anchor + visible + margin) return { top: held, height }
+  return { top: clampWindowTop(anchor + visible / 2 - height / 2, maxTop), height }
+}
+
+function clampWindowTop(top: number, maxTop: number): number {
+  return Math.min(Math.max(top, 0), maxTop)
 }

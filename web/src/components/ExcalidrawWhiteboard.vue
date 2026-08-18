@@ -5,7 +5,7 @@ import Message from 'primevue/message'
 
 import type { PersistedWhiteboardData, WhiteboardData } from '../types'
 import { mountExcalidraw, type ExcalidrawBridge } from '../excalidrawBridge'
-import { chapterContentRevision, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, viewportScale, WHITEBOARD_MIN_HEIGHT, WHITEBOARD_WIDTH, whiteboardReferenceHeight } from '../whiteboard'
+import { chapterContentRevision, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, viewportScale, WHITEBOARD_MIN_HEIGHT, WHITEBOARD_WIDTH, whiteboardReferenceHeight, whiteboardWindow } from '../whiteboard'
 import RichTextContent from './RichTextContent.vue'
 
 const props = defineProps<{
@@ -22,6 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const viewport = ref<HTMLElement | null>(null)
+const stage = ref<HTMLElement | null>(null)
 const contentLayer = ref<HTMLElement | null>(null)
 const editorHost = ref<HTMLElement | null>(null)
 const ready = ref(false)
@@ -31,10 +32,13 @@ const referenceWidth = ref(WHITEBOARD_WIDTH)
 const referenceHeight = ref(WHITEBOARD_MIN_HEIGHT)
 const contentReferenceHeight = ref(0)
 const scale = ref(1)
+const windowTop = ref(0)
+const windowHeight = ref(WHITEBOARD_MIN_HEIGHT)
 const interactionReady = ref(false)
 const legacyResetAllowed = ref(false)
 let bridge: ExcalidrawBridge | null = null
 let resizeObserver: ResizeObserver | null = null
+let windowFrame: number | null = null
 let rebuildGeneration = 0
 let interactionGeneration = 0
 let layoutChapterId = ''
@@ -50,6 +54,10 @@ const contentStyle = computed(() => ({
   minHeight: `${contentReferenceHeight.value}px`,
   transform: `scale(${scale.value})`,
 }))
+const hostStyle = computed(() => ({
+  top: `${windowTop.value * scale.value}px`,
+  height: `${windowHeight.value * scale.value}px`,
+}))
 const revisionChanged = computed(() => Boolean(compatibleData.value && revision.value && compatibleData.value.anchor.content_revision !== revision.value))
 
 onMounted(() => {
@@ -58,6 +66,7 @@ onMounted(() => {
     if (props.active) void prepareInteraction()
   })
   if (viewport.value) resizeObserver.observe(viewport.value)
+  window.addEventListener('scroll', scheduleWindowSync, { capture: true, passive: true })
   void rebuild()
 })
 
@@ -65,6 +74,9 @@ onBeforeUnmount(() => {
   rebuildGeneration++
   interactionGeneration++
   resizeObserver?.disconnect()
+  window.removeEventListener('scroll', scheduleWindowSync, { capture: true })
+  if (windowFrame !== null) cancelAnimationFrame(windowFrame)
+  windowFrame = null
   bridge?.destroy()
 })
 
@@ -75,7 +87,28 @@ watch(() => props.saving, (saving) => bridge?.setSaving(Boolean(saving)))
 
 function syncScale() {
   scale.value = viewportScale(viewport.value?.getBoundingClientRect().width ?? referenceWidth.value, referenceWidth.value)
+  syncWindow()
   requestAnimationFrame(() => bridge?.resize())
+}
+
+function scheduleWindowSync() {
+  if (windowFrame !== null) return
+  windowFrame = requestAnimationFrame(() => {
+    windowFrame = null
+    syncWindow()
+  })
+}
+
+// The overlay only spans a few screens of the chapter, so keep it over whatever the
+// reader is looking at instead of stretching one canvas across the whole stage.
+function syncWindow() {
+  const stageTop = stage.value?.getBoundingClientRect().top ?? 0
+  const visibleHeight = typeof window === 'undefined' ? 0 : window.innerHeight
+  const next = whiteboardWindow(referenceHeight.value, -stageTop / scale.value, visibleHeight / scale.value, windowTop.value)
+  if (next.top === windowTop.value && next.height === windowHeight.value) return
+  windowTop.value = next.top
+  windowHeight.value = next.height
+  bridge?.resize()
 }
 
 function nextAnimationFrame(): Promise<void> {
@@ -130,7 +163,7 @@ async function rebuild() {
     data: saved,
     width: referenceWidth.value,
     height: referenceHeight.value,
-    topInset: 0,
+    offsetTop: () => windowTop.value * scale.value,
     onSave: save,
     onReady: () => {
       if (generation !== rebuildGeneration) return
@@ -171,12 +204,12 @@ async function save() {
     <Message v-if="props.active && revisionChanged" severity="warn" :closable="false">章节正文已经变化，原白板仍按保存时版式显示，请确认位置后再保存。</Message>
     <Message v-if="props.active && error" severity="error" :closable="false">{{ error }}</Message>
     <div ref="viewport" class="whiteboard-viewport">
-      <div class="whiteboard-stage" :class="{ 'is-active': props.active, 'is-interactive': interactionReady }" :style="stageStyle">
+      <div ref="stage" class="whiteboard-stage" :class="{ 'is-active': props.active, 'is-interactive': interactionReady }" :style="stageStyle">
         <div ref="contentLayer" class="whiteboard-content-layer" :style="contentStyle">
           <RichTextContent v-if="content" :content="content" @selection="emit('selection', $event)" />
           <p v-else class="chapter-content">本章暂无正文，可以直接在空白区域勾画。</p>
         </div>
-        <div ref="editorHost" class="excalidraw-host" aria-label="章节透明白板" :aria-hidden="!props.active || !interactionReady" />
+        <div ref="editorHost" class="excalidraw-host" :style="hostStyle" aria-label="章节透明白板" :aria-hidden="!props.active || !interactionReady" />
       </div>
     </div>
   </section>

@@ -253,6 +253,11 @@ func allowedAnnotationColor(value string) bool {
 	return value == "yellow" || value == "green" || value == "blue" || value == "pink"
 }
 
+const (
+	maxWhiteboardWidth  = 10_000
+	maxWhiteboardHeight = 200_000
+)
+
 func validWhiteboardData(data []byte, chapterHashID string) bool {
 	var document struct {
 		Version int `json:"version"`
@@ -282,7 +287,7 @@ func validWhiteboardData(data []byte, chapterHashID string) bool {
 	if document.Anchor.ContentRevision == "" || len(document.Anchor.ContentRevision) > 128 || document.Space.Fit != "contain" {
 		return false
 	}
-	if !validCanvasDimension(document.Space.Width) || !validCanvasDimension(document.Space.Height) || document.Document.Type != "excalidraw" || document.Document.Version != 2 {
+	if !validCanvasDimension(document.Space.Width, maxWhiteboardWidth) || !validCanvasDimension(document.Space.Height, maxWhiteboardHeight) || document.Document.Type != "excalidraw" || document.Document.Version != 2 {
 		return false
 	}
 	if document.Document.Elements == nil || len(document.Document.Elements) > 5_000 || len(document.Document.AppState) != 1 || document.Document.Files == nil || len(document.Document.Files) != 0 {
@@ -672,6 +677,8 @@ func allowedWhiteboardElementType(value string) bool {
 	}
 }
 
-func validCanvasDimension(value float64) bool {
-	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 100 && value <= 10_000
+// A whiteboard spans the whole rendered chapter, so its height follows the reflowed
+// Markdown and a long chapter is far taller than the reading column is wide.
+func validCanvasDimension(value float64, maximum float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 100 && value <= maximum
 }

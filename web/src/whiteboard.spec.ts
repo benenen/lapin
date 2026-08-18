@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { chapterContentRevision, excalidrawViewport, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, isSupportedExcalidrawElement, viewportScale, whiteboardReferenceHeight } from './whiteboard'
+import { chapterContentRevision, excalidrawViewport, isCompatibleWhiteboard, isLegacyTldrawWhiteboard, isSupportedExcalidrawElement, viewportScale, WHITEBOARD_MAX_WINDOW_HEIGHT, whiteboardReferenceHeight, whiteboardWindow } from './whiteboard'
 
 describe('anchored whiteboard contract', () => {
   it('keeps one canonical coordinate space while the viewport resizes', () => {
@@ -9,17 +9,41 @@ describe('anchored whiteboard contract', () => {
     expect(viewportScale(1440, 960)).toBe(1)
   })
 
-  it('keeps scene coordinates below the embedded Excalidraw toolbar', () => {
-    expect(excalidrawViewport(480, 960, 64)).toEqual({
+  it('shifts scene coordinates by the drawable window offset', () => {
+    expect(excalidrawViewport(480, 960, 300)).toEqual({
       zoom: 0.5,
       scrollX: 0,
-      scrollY: 128,
+      scrollY: -600,
     })
-    expect(excalidrawViewport(1440, 960, 64)).toEqual({
+    expect(excalidrawViewport(1440, 960, 300)).toEqual({
       zoom: 1,
       scrollX: 0,
-      scrollY: 64,
+      scrollY: -300,
     })
+  })
+
+  it('keeps the drawable window small enough for a browser canvas on long chapters', () => {
+    const window = whiteboardWindow(73600, 0, 900, 0)
+
+    expect(window.height).toBe(2700)
+    expect(window.height).toBeLessThanOrEqual(WHITEBOARD_MAX_WINDOW_HEIGHT)
+    expect(window.top).toBe(0)
+  })
+
+  it('covers the whole stage when the chapter fits in one window', () => {
+    expect(whiteboardWindow(2000, 0, 900, 0)).toEqual({ top: 0, height: 2000 })
+  })
+
+  it('holds the drawable window still while the reader stays inside its margin', () => {
+    expect(whiteboardWindow(73600, 4000, 900, 3000)).toEqual({ top: 3000, height: 2700 })
+  })
+
+  it('recenters the drawable window before the reader reaches its edge', () => {
+    expect(whiteboardWindow(73600, 5200, 900, 3000)).toEqual({ top: 4300, height: 2700 })
+  })
+
+  it('clamps the drawable window to the end of the chapter', () => {
+    expect(whiteboardWindow(10000, 9000, 900, 0)).toEqual({ top: 7300, height: 2700 })
   })
 
   it('keeps the canvas tall enough for reflowed chapter content', () => {

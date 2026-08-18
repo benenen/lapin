@@ -37,7 +37,7 @@ describe('Excalidraw bridge', () => {
 
   it('extends the built-in toolbar instead of rendering a second toolbar', () => {
     const host = document.createElement('div')
-    mountExcalidraw(host, { width: 960, height: 640, topInset: 0 })
+    mountExcalidraw(host, { width: 960, height: 640 })
 
     const excalidrawElement = reactRoot.render.mock.calls[0]?.[0]
     expect(excalidrawElement?.props.renderTopRightUI).toBeTypeOf('function')
@@ -50,7 +50,7 @@ describe('Excalidraw bridge', () => {
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {})
     parent.addEventListener('wheel', bubbledWheel)
     parent.append(host)
-    const bridge = mountExcalidraw(host, { width: 960, height: 640, topInset: 0 })
+    const bridge = mountExcalidraw(host, { width: 960, height: 640 })
 
     const excalidrawElement = reactRoot.render.mock.calls[0]?.[0]
     expect(excalidrawElement?.props.detectScroll).toBe(true)
@@ -116,13 +116,39 @@ describe('Excalidraw bridge', () => {
     scrollBy.mockRestore()
   })
 
+  it('anchors the scene to the drawable window offset inside the chapter', () => {
+    const host = document.createElement('div')
+    let offsetTop = 0
+    mountExcalidraw(host, { width: 960, height: 640, offsetTop: () => offsetTop })
+
+    const excalidrawElement = reactRoot.render.mock.calls[0]?.[0]
+    const api = {
+      refresh: vi.fn(),
+      setActiveTool: vi.fn(),
+      updateScene: vi.fn(),
+    }
+    excalidrawElement.props.excalidrawAPI(api)
+
+    expect(api.updateScene).toHaveBeenCalledWith(expect.objectContaining({
+      appState: { scrollX: 0, scrollY: 0, zoom: { value: 1 } },
+    }))
+
+    offsetTop = 5100
+    api.updateScene.mockClear()
+    excalidrawElement.props.excalidrawAPI(api)
+
+    expect(api.updateScene).toHaveBeenCalledWith(expect.objectContaining({
+      appState: { scrollX: 0, scrollY: -5100, zoom: { value: 1 } },
+    }))
+  })
+
   it('uses the macOS command modifier for toolbar history actions', () => {
     const platform = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel')
     const host = document.createElement('div')
     const shortcuts: KeyboardEvent[] = []
     host.addEventListener('keydown', (event) => { shortcuts.push(event) })
 
-    const bridge = mountExcalidraw(host, { width: 960, height: 640, topInset: 0 })
+    const bridge = mountExcalidraw(host, { width: 960, height: 640 })
     bridge.undo()
 
     expect(shortcuts[0]?.metaKey).toBe(true)

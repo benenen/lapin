@@ -150,7 +150,7 @@ button, input, textarea { font: inherit; }
 .whiteboard-stage { position: relative; overflow: visible; margin: 0; background: transparent; }
 .whiteboard-content-layer { position: absolute; z-index: 1; top: 0; left: 0; overflow: hidden; transform-origin: 0 0; pointer-events: auto; }
 .whiteboard-stage.is-active .whiteboard-content-layer { pointer-events: none; }
-.excalidraw-host { position: absolute; z-index: 2; inset: 0; visibility: hidden; pointer-events: none; touch-action: pan-y; }
+.excalidraw-host { position: absolute; z-index: 2; top: 0; left: 0; right: 0; height: 100%; visibility: hidden; pointer-events: none; touch-action: pan-y; }
 .whiteboard-stage.is-active.is-interactive .excalidraw-host { visibility: visible; pointer-events: auto; }
 .excalidraw-host .excalidraw { overflow: visible !important; }
 .excalidraw-host .excalidraw, .excalidraw-host .excalidraw .App-menu_top { background: transparent !important; }

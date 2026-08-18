@@ -172,6 +172,20 @@ func TestUserCanImportAndStudySubject(t *testing.T) {
 	if savedWhiteboard.Data.Data.Version != 3 || savedWhiteboard.Data.Data.Anchor.ID != chapterID || savedWhiteboard.Data.Data.Space.Width != 960 || savedWhiteboard.Data.Data.Space.Height != 640 || savedWhiteboard.Data.Data.Document.Type != "excalidraw" || len(savedWhiteboard.Data.Data.Document.Elements) != 3 {
 		t.Fatalf("whiteboard contract was not preserved: %s", response.Body())
 	}
+	longChapterWhiteboard := strings.Replace(whiteboardDocument, `"space":{"width":960,"height":640,"fit":"contain"}`, `"space":{"width":960,"height":73680,"fit":"contain"}`, 1)
+	response = performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", longChapterWhiteboard,
+		ut.Header{Key: "Cookie", Value: cookies},
+		ut.Header{Key: "X-CSRF-Token", Value: payload.Data.CSRFToken},
+	)
+	if response.StatusCode() != 200 {
+		t.Fatalf("save whiteboard anchored to a long chapter status = %d, body = %s", response.StatusCode(), response.Body())
+	}
+	response = performJSON(h, "POST", "/api/v1/chapters/"+chapterID+"/whiteboard", whiteboardDocument,
+		ut.Header{Key: "Cookie", Value: cookies},
+		ut.Header{Key: "X-CSRF-Token", Value: payload.Data.CSRFToken},
+	)
+	assertStatus(t, response, 200)
+
 	bobResponse := performJSON(h, "POST", "/api/v1/auth/register", `{"email":"bob@example.com","name":"Bob","password":"correct horse battery staple"}`)
 	assertStatus(t, bobResponse, 201)
 	bobCookies, _ := authState(t, bobResponse)
@@ -425,6 +439,8 @@ func TestAPIRejectsInvalidAndUnauthorizedRequests(t *testing.T) {
 	invalidWhiteboards := []string{
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":""},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}}}`,
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":99,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":10001,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}}}`,
+		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":200001,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}}}`,
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"other","version":2,"elements":[],"appState":{},"files":{}}}}`,
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":null,"appState":{},"files":{}}}}`,
 		`{"data":{"version":3,"anchor":{"type":"chapter","id":"` + chapterID + `","content_revision":"sha256:x"},"space":{"width":960,"height":640,"fit":"contain"},"document":{"type":"excalidraw","version":2,"elements":[null],"appState":{},"files":{}}}}`,
