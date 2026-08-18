@@ -164,6 +164,20 @@ button, input, textarea { font: inherit; }
 .excalidraw-host .lapin-toolbar-drag-handle { cursor: grab; touch-action: none; }
 .excalidraw-host .lapin-toolbar-drag-handle:active { cursor: grabbing; }
 .chapter-document-actions { display: flex; justify-content: flex-end; margin-bottom: .8rem; }
+.chapter-toolbar { position: sticky; bottom: 1.5rem; z-index: 30; display: flex; align-items: center; justify-content: center; gap: .35rem; width: max-content; max-width: 100%; margin: 1.5rem auto 0; padding: .35rem .5rem; border: 1px solid #dcddd4; border-radius: 999px; background: rgba(251, 250, 246, .86); box-shadow: 0 6px 20px rgba(51, 72, 62, .14); backdrop-filter: blur(12px); transition: width .2s ease; }
+.chapter-toolbar button { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .8rem; border: 0; border-radius: 999px; color: #33483e; background: transparent; cursor: pointer; transition: background .15s ease; }
+.chapter-toolbar button:hover:not(:disabled) { background: #eceade; }
+.chapter-toolbar button.active { color: #fbfaf6; background: #33483e; }
+.chapter-toolbar button:disabled { opacity: .45; cursor: not-allowed; }
+.chapter-toolbar-divider { width: 1px; height: 1.4rem; background: #dcddd4; }
+.chapter-toolbar-quote { max-width: 16rem; overflow: hidden; padding-left: .5rem; color: #6d664f; white-space: nowrap; text-overflow: ellipsis; }
+.chapter-toolbar-colors { display: flex; gap: .35rem; padding: 0 .3rem; }
+.chapter-toolbar-colors button { width: 1.25rem; height: 1.25rem; padding: 0; border: 2px solid transparent; border-radius: 50%; }
+.chapter-toolbar-colors button.active { border-color: #33483e; }
+.chapter-toolbar-colors .yellow { background: #f0d67b; }
+.chapter-toolbar-colors .green { background: #9fcfa8; }
+.chapter-toolbar-colors .blue { background: #9ebedb; }
+.chapter-toolbar-colors .pink { background: #e7aeb6; }
 
 .comments-panel { max-width: 52rem; }
 .comment-compose { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: .8rem; padding: 1rem; border: 1px solid #dbdcd3; border-radius: 12px; background: #fbfaf6; }
