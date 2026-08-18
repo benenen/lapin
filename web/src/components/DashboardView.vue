@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
@@ -14,6 +14,7 @@ import lapinLogo from '../assets/lapin-logo.svg'
 import { buildChapterTree } from '../chapterTree'
 import type { AccessToken, Annotation, Comment, PersistedWhiteboardData, Subject, User, Whiteboard, WhiteboardData } from '../types'
 import AnnotationSidebar from './AnnotationSidebar.vue'
+import ChapterDiscussion from './ChapterDiscussion.vue'
 import ChapterToolbar from './ChapterToolbar.vue'
 import ChapterTree from './ChapterTree.vue'
 import RichTextEditor from './RichTextEditor.vue'
@@ -29,8 +30,11 @@ const whiteboardVisible = ref(false)
 // 正文默认全宽：the sidebar only appears once the reader asks for it, by composing an
 // annotation, clicking a mark, or opening a tab from the toolbar.
 const sidebarOpen = ref(false)
-const sidebarTab = ref<'annotations' | 'comments'>('annotations')
 const activeAnnotationId = ref('')
+const discussionRef = ref<HTMLElement | null>(null)
+// Where the reader was before jumping to the discussion, so the toolbar can offer a way back.
+const discussionReturn = ref<number | null>(null)
+let discussionObserver: IntersectionObserver | null = null
 const whiteboardRef = ref<InstanceType<typeof ExcalidrawWhiteboard> | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -75,6 +79,11 @@ const toolbarMode = computed<'reading' | 'selecting' | 'whiteboard'>(() => {
 
 onMounted(() => void openSubject(props.subjectId))
 
+onBeforeUnmount(() => {
+  discussionObserver?.disconnect()
+  discussionObserver = null
+})
+
 watch(() => props.subjectId, (id) => void openSubject(id))
 
 watch(activeChapterId, (id) => {
@@ -86,6 +95,7 @@ watch(activeChapterId, (id) => {
   whiteboards.value = []
   comments.value = []
   activeAnnotationId.value = ''
+  discussionReturn.value = null
   resetAnnotationDraft()
   if (!id) return
   void loadChapterInteractions(id)
@@ -218,14 +228,57 @@ function captureSelection(selection: { start_offset: number; end_offset: number;
   }
 }
 
-function openSidebar(tab: 'annotations' | 'comments') {
-  sidebarTab.value = tab
+function openAnnotations() {
   sidebarOpen.value = true
 }
 
 function composeAnnotation() {
-  openSidebar('annotations')
+  openAnnotations()
 }
+
+function openDiscussion() {
+  const target = discussionRef.value
+  if (!target) return
+  discussionReturn.value = window.scrollY
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // Chapter images load lazily, so at click time the page is shorter than it is about to be and
+  // the browser clamps the smooth scroll to a stale maximum — landing several hundred pixels
+  // short of the discussion. Re-align once the scroll settles and the real height is known.
+  const realign = () => {
+    window.removeEventListener('scrollend', realign)
+    if (Math.abs(target.getBoundingClientRect().top) > 8) target.scrollIntoView({ block: 'start' })
+  }
+  window.addEventListener('scrollend', realign)
+  window.setTimeout(realign, 1500)
+}
+
+function returnFromDiscussion() {
+  const top = discussionReturn.value
+  discussionReturn.value = null
+  if (top === null) return
+  window.scrollTo({ top, behavior: 'smooth' })
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function scrollToBottom() {
+  window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })
+}
+
+// Once the discussion has scrolled out of sight the reader is no longer "at" it, and a
+// 返回 button that leads back to where they already stand would be a puzzle. Reset it.
+watch(discussionRef, (element) => {
+  discussionObserver?.disconnect()
+  discussionObserver = null
+  if (!element || typeof IntersectionObserver === 'undefined') return
+  discussionObserver = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) return
+    discussionReturn.value = null
+  })
+  discussionObserver.observe(element)
+})
 
 // 取消选区 only drops the highlighted passage; the half-written note and the
 // chosen colour survive so the reader can re-select without losing their work.
@@ -251,7 +304,7 @@ function toggleWhiteboard() {
 
 function focusAnnotation(id: string) {
   activeAnnotationId.value = id
-  openSidebar('annotations')
+  openAnnotations()
 }
 
 async function saveAnnotation() {
@@ -382,7 +435,7 @@ function showError(caught: unknown) {
               <Button v-if="isOwner" label="编辑章节" icon="pi pi-pencil" severity="secondary" text @click="openEditChapter" />
             </div>
             <section class="notes-grid">
-              <div class="chapter-document">
+              <div class="chapter-document" :class="{ 'is-shifted': sidebarOpen && !whiteboardVisible }">
                 <ExcalidrawWhiteboard
                   ref="whiteboardRef"
                   :chapter-id="activeChapter.id"
@@ -404,9 +457,9 @@ function showError(caught: unknown) {
                   :whiteboard-loading="whiteboardLoading"
                   :whiteboard-error="Boolean(whiteboardLoadError)"
                   :saving="whiteboardSaving"
+                  :discussion-anchored="discussionReturn !== null"
                   @toggle-whiteboard="toggleWhiteboard"
                   @retry-whiteboard="loadWhiteboards(activeChapter.id)"
-                  @open-sidebar="openSidebar"
                   @pick-color="annotation.color = $event"
                   @compose-annotation="composeAnnotation"
                   @cancel-selection="cancelSelection"
@@ -414,21 +467,29 @@ function showError(caught: unknown) {
                   @redo="whiteboardRef?.redo()"
                   @clear="whiteboardRef?.clear()"
                   @save-whiteboard="whiteboardRef?.save()"
+                  @open-annotations="openAnnotations"
+                  @open-discussion="openDiscussion"
+                  @return-from-discussion="returnFromDiscussion"
+                  @scroll-top="scrollToTop"
+                  @scroll-bottom="scrollToBottom"
                 />
+                <div ref="discussionRef" class="chapter-discussion-anchor">
+                  <ChapterDiscussion
+                    :comments="comments"
+                    :body="commentBody"
+                    :user-name="user.name"
+                    @update:body="commentBody = $event"
+                    @post="postComment"
+                  />
+                </div>
               </div>
               <AnnotationSidebar
                 v-model:open="sidebarOpen"
-                v-model:tab="sidebarTab"
                 :annotations="annotations"
-                :comments="comments"
                 :draft="{ quote: annotation.quote, note: annotation.note, color: annotation.color }"
                 :active-annotation-id="activeAnnotationId"
-                :comment-body="commentBody"
-                :user-name="user.name"
                 @update:draft="annotation = { ...annotation, ...$event }"
-                @update:comment-body="commentBody = $event"
                 @save-annotation="saveAnnotation"
-                @post-comment="postComment"
               />
             </section>
           </article>

@@ -11,12 +11,17 @@ const props = defineProps<{
   whiteboardLoading: boolean
   whiteboardError: boolean
   saving: boolean
+  discussionAnchored: boolean
 }>()
 
 const emit = defineEmits<{
   'toggle-whiteboard': []
   'retry-whiteboard': []
-  'open-sidebar': [tab: 'annotations' | 'comments']
+  'open-annotations': []
+  'open-discussion': []
+  'return-from-discussion': []
+  'scroll-top': []
+  'scroll-bottom': []
   'pick-color': [color: string]
   'compose-annotation': []
   'cancel-selection': []
@@ -87,12 +92,31 @@ const whiteboardOpen = computed(() => props.mode === 'whiteboard')
       <i class="pi pi-times" />
     </button>
     <template v-else>
-      <button type="button" data-action="annotations" @click="emit('open-sidebar', 'annotations')">
+      <button type="button" data-action="annotations" @click="emit('open-annotations')">
         <i class="pi pi-pencil" /> 标注 {{ props.annotationCount }}
       </button>
-      <button v-if="!whiteboardOpen" type="button" data-action="comments" @click="emit('open-sidebar', 'comments')">
-        <i class="pi pi-comments" /> 讨论 {{ props.commentCount }}
-      </button>
+      <template v-if="!whiteboardOpen">
+        <button
+          v-if="props.discussionAnchored"
+          type="button"
+          data-action="return-from-discussion"
+          @click="emit('return-from-discussion')"
+        >
+          <i class="pi pi-reply" /> 返回
+        </button>
+        <button v-else type="button" data-action="discussion" @click="emit('open-discussion')">
+          <i class="pi pi-comments" /> 讨论 {{ props.commentCount }}
+        </button>
+      </template>
     </template>
+
+    <!-- Reading the chapter is the one thing every mode has in common, so the jumps stay put. -->
+    <span class="chapter-toolbar-divider" aria-hidden="true" />
+    <button type="button" data-action="scroll-top" aria-label="回到章节顶部" title="回到章节顶部" @click="emit('scroll-top')">
+      <i class="pi pi-arrow-up" />
+    </button>
+    <button type="button" data-action="scroll-bottom" aria-label="跳到章节底部" title="跳到章节底部" @click="emit('scroll-bottom')">
+      <i class="pi pi-arrow-down" />
+    </button>
   </div>
 </template>

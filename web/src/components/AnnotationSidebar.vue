@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, watch } from 'vue'
-import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
 
-import type { Annotation, Comment } from '../types'
+import type { Annotation } from '../types'
 import RichTextContent from './RichTextContent.vue'
 import RichTextEditor from './RichTextEditor.vue'
 
@@ -15,22 +14,15 @@ interface AnnotationDraft {
 
 const props = defineProps<{
   open: boolean
-  tab: 'annotations' | 'comments'
   annotations: Annotation[]
-  comments: Comment[]
   draft: AnnotationDraft
   activeAnnotationId: string
-  commentBody: string
-  userName: string
 }>()
 
 const emit = defineEmits<{
   'update:open': [open: boolean]
-  'update:tab': [tab: 'annotations' | 'comments']
   'update:draft': [draft: AnnotationDraft]
-  'update:commentBody': [body: string]
   'save-annotation': []
-  'post-comment': []
 }>()
 
 const colors = ['yellow', 'green', 'blue', 'pink']
@@ -54,7 +46,7 @@ function updateDraft(patch: Partial<AnnotationDraft>) {
 </script>
 
 <template>
-  <aside class="annotation-sidebar" :class="{ 'is-collapsed': !props.open }">
+  <aside class="annotation-sidebar" :class="{ 'is-collapsed': !props.open }" aria-labelledby="annotation-sidebar-heading">
     <button
       type="button"
       class="annotation-sidebar-handle"
@@ -67,43 +59,9 @@ function updateDraft(patch: Partial<AnnotationDraft>) {
     </button>
 
     <div class="annotation-sidebar-body">
-      <div class="annotation-sidebar-tabs" role="tablist" aria-label="标注与讨论">
-        <button
-          id="annotation-sidebar-tab-annotations"
-          type="button"
-          role="tab"
-          data-tab="annotations"
-          :aria-selected="props.tab === 'annotations'"
-          aria-controls="annotation-sidebar-panel-annotations"
-          :tabindex="props.tab === 'annotations' ? 0 : -1"
-          :class="{ active: props.tab === 'annotations' }"
-          @click="emit('update:tab', 'annotations')"
-        >
-          标注 {{ props.annotations.length }}
-        </button>
-        <button
-          id="annotation-sidebar-tab-comments"
-          type="button"
-          role="tab"
-          data-tab="comments"
-          :aria-selected="props.tab === 'comments'"
-          aria-controls="annotation-sidebar-panel-comments"
-          :tabindex="props.tab === 'comments' ? 0 : -1"
-          :class="{ active: props.tab === 'comments' }"
-          @click="emit('update:tab', 'comments')"
-        >
-          讨论 {{ props.comments.length }}
-        </button>
-      </div>
+      <h2 id="annotation-sidebar-heading" class="annotation-sidebar-heading">标注 {{ props.annotations.length }}</h2>
 
-      <section
-        v-if="props.tab === 'annotations'"
-        id="annotation-sidebar-panel-annotations"
-        class="annotation-sidebar-panel"
-        role="tabpanel"
-        tabindex="0"
-        aria-labelledby="annotation-sidebar-tab-annotations"
-      >
+      <section class="annotation-sidebar-panel">
         <div class="annotation-composer">
           <h3>新建标注</h3>
           <blockquote v-if="props.draft.quote">“{{ props.draft.quote }}”</blockquote>
@@ -143,33 +101,6 @@ function updateDraft(patch: Partial<AnnotationDraft>) {
         </div>
       </section>
 
-      <section
-        v-else
-        id="annotation-sidebar-panel-comments"
-        class="annotation-sidebar-panel comments-panel"
-        role="tabpanel"
-        tabindex="0"
-        aria-labelledby="annotation-sidebar-tab-comments"
-      >
-        <div class="comment-compose">
-          <Avatar :label="props.userName.slice(0, 1)" shape="circle" />
-          <RichTextEditor
-            class="compact-rich-text-editor"
-            :model-value="props.commentBody"
-            @update:model-value="emit('update:commentBody', $event)"
-          />
-          <Button label="发送" icon="pi pi-send" :disabled="!props.commentBody.trim()" @click="emit('post-comment')" />
-        </div>
-        <div v-if="props.comments.length === 0" class="empty-comments">还没有讨论，来提出第一个问题吧。</div>
-        <div v-for="item in props.comments" :key="item.id" class="comment-item">
-          <Avatar :label="item.author_name.slice(0, 1)" shape="circle" />
-          <div>
-            <strong>{{ item.author_name }}</strong>
-            <small>{{ new Date(item.created_at).toLocaleString() }}</small>
-            <RichTextContent :content="item.body" />
-          </div>
-        </div>
-      </section>
     </div>
   </aside>
 </template>

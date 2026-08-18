@@ -117,7 +117,18 @@ button, input, textarea { font: inherit; }
 .chapter-title span { color: #a17d36; font-size: .73rem; font-weight: 800; letter-spacing: .1em; }
 .chapter-title h2 { margin: .3rem 0 1.5rem; font-family: Georgia, serif; font-size: 2rem; }
 .chapter-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.notes-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2rem; align-items: start; }
+/* The sidebar floats above the page instead of taking a column, so opening it can never
+   re-wrap the chapter. The measure is fixed for the same reason — and because a 1000px+ line
+   is too long to read comfortably anyway. */
+.notes-grid { display: block; }
+.chapter-document { max-width: 46rem; margin-inline: auto; transition: transform .22s ease; }
+/* Fallback for viewports where the floating sidebar would cover the right edge of the text:
+   slide the column instead of shrinking it, so the line breaks still never move. Deliberately
+   not applied while the whiteboard is up — a transform on an ancestor invalidates the DOM
+   offsets Excalidraw caches, and ink would land off the pointer. */
+.chapter-document.is-shifted { transform: translateX(-10rem); }
+.chapter-discussion { margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid #dcddd4; }
+.chapter-discussion h2 { margin: 0 0 1.2rem; font-family: Georgia, serif; font-size: 1.5rem; }
 .chapter-content { margin: 0; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; font-size: 1.08rem; line-height: 2; white-space: normal; }
 .chapter-content .tiptap { outline: none; }
 .autosize-rich-text, .autosize-rich-text .tiptap { height: auto; min-height: 0; }
@@ -139,14 +150,13 @@ button, input, textarea { font: inherit; }
 .annotation-card small, .annotation-card q { display: block; color: #899087; }
 .annotation-card p { margin: .35rem 0 0; }
 
-.annotation-sidebar { position: sticky; top: 1rem; align-self: start; width: 20rem; max-height: calc(100vh - 2rem); transition: transform .22s ease, width .22s ease; }
-.annotation-sidebar.is-collapsed { width: 0; transform: translateX(100%); }
+/* Clears the 4.8rem topbar: floating over the page must not mean floating over the chrome. */
+.annotation-sidebar { position: fixed; top: 5.8rem; right: 0; z-index: 40; width: 20rem; max-height: calc(100vh - 6.8rem); transition: width .22s ease; }
+.annotation-sidebar.is-collapsed { width: 0; }
 .annotation-sidebar-handle { position: absolute; top: 50%; left: -1.35rem; z-index: 2; display: flex; align-items: center; justify-content: center; width: 1.35rem; height: 3.2rem; padding: 0; border: 1px solid #dcddd4; border-right: 0; border-radius: 8px 0 0 8px; color: #33483e; background: #fbfaf6; transform: translateY(-50%); cursor: pointer; }
 .annotation-sidebar-body { display: flex; flex-direction: column; overflow: hidden; max-height: inherit; border: 1px solid #dcddd4; border-radius: 12px; background: #fbfaf6; }
 .annotation-sidebar.is-collapsed .annotation-sidebar-body { visibility: hidden; }
-.annotation-sidebar-tabs { display: flex; border-bottom: 1px solid #dcddd4; }
-.annotation-sidebar-tabs button { flex: 1; padding: .7rem; border: 0; color: #6d664f; background: transparent; cursor: pointer; }
-.annotation-sidebar-tabs button.active { color: #33483e; box-shadow: inset 0 -2px 0 #33483e; }
+.annotation-sidebar-heading { margin: 0; padding: .85rem 1rem; border-bottom: 1px solid #dcddd4; color: #33483e; font-family: Georgia, serif; font-size: 1.05rem; }
 .annotation-sidebar-panel { overflow: auto; padding: 1rem; }
 .annotation-composer h3 { margin-top: 0; font-family: Georgia, serif; }
 .annotation-composer blockquote { margin: .7rem 0; padding: .7rem; border-left: 3px solid #d5ad52; color: #6d664f; background: #f8f1d9; }
@@ -161,10 +171,10 @@ button, input, textarea { font: inherit; }
 .annotation-mark-green { --annotation-tint: rgba(159, 207, 168, .55); --annotation-hover: rgba(159, 207, 168, .9); --annotation-dot: #63a171; }
 .annotation-mark-blue { --annotation-tint: rgba(158, 190, 219, .55); --annotation-hover: rgba(158, 190, 219, .9); --annotation-dot: #548bb8; }
 .annotation-mark-pink { --annotation-tint: rgba(231, 174, 182, .55); --annotation-hover: rgba(231, 174, 182, .9); --annotation-dot: #c56f7d; }
-/* Matches the .notes-grid single-column breakpoint below: between the two the sidebar would
-   otherwise fall under the text as a stacked 20rem box instead of becoming a drawer. */
+/* On a phone the drawer takes the full height; the column never shifts, there is no room. */
 @media (max-width: 960px) {
-  .annotation-sidebar { position: fixed; top: 0; right: 0; z-index: 40; max-height: 100vh; }
+  .annotation-sidebar { top: 4.8rem; max-height: calc(100vh - 4.8rem); }
+  .chapter-document.is-shifted { transform: none; }
 }
 
 .anchored-whiteboard { position: relative; }
@@ -242,7 +252,6 @@ button, input, textarea { font: inherit; }
   .sidebar-heading { justify-content: center; }
   .subject-item { justify-content: center; padding-inline: .4rem; }
   .study-layout { grid-template-columns: 10rem minmax(0, 1fr); }
-  .notes-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 680px) {

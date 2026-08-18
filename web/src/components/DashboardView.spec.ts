@@ -124,9 +124,31 @@ async function saveDraft(wrapper: ReturnType<typeof mountDashboard>, note: strin
   await wrapper.findAll('.annotation-composer button').find((button) => button.text() === '保存标注')!.trigger('click')
 }
 
+let scrollTo = vi.fn()
+let scrollIntoView = vi.fn()
+let observed: Element[] = []
+let boundingTop = 0
+const observers: IntersectionObserverCallback[] = []
+
 describe('DashboardView ownership editing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    scrollTo = vi.fn()
+    scrollIntoView = vi.fn()
+    observed = []
+    vi.stubGlobal('scrollTo', scrollTo)
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) { observers.push(callback) }
+      observe(element: Element) { observed.push(element) }
+      disconnect() {}
+      unobserve() {}
+    })
+    Element.prototype.scrollIntoView = scrollIntoView
+    boundingTop = 0
+    Element.prototype.getBoundingClientRect = function () {
+      return { x: 0, y: boundingTop, top: boundingTop, bottom: boundingTop, left: 0, right: 0, width: 0, height: 0, toJSON: () => ({}) }
+    }
+    observers.length = 0
     apiMock.listSubjects.mockResolvedValue([{ ...subject, chapters: undefined }])
     apiMock.getSubject.mockResolvedValue(subject)
     apiMock.listAnnotations.mockResolvedValue([annotationRecord])
@@ -263,7 +285,7 @@ describe('DashboardView ownership editing', () => {
     expect(wrapper.text()).not.toContain('白板内容仅你自己可见')
 
     wrapper.get('[data-testid="excalidraw-whiteboard"]').element.setAttribute('data-session-probe', 'preserved')
-    await wrapper.get('[data-tab="comments"]').trigger('click')
+    await wrapper.get('.annotation-sidebar-handle').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-session-probe')).toBe('preserved')
     expect(wrapper.get('[data-testid="excalidraw-whiteboard"]').attributes('data-active')).toBe('true')
@@ -334,10 +356,7 @@ describe('DashboardView ownership editing', () => {
     await flushPromises()
 
     expect(wrapper.find('.annotation-composer .rich-editor').exists()).toBe(true)
-
-    await wrapper.get('[data-tab="comments"]').trigger('click')
-
-    expect(wrapper.find('.comment-compose .rich-editor').exists()).toBe(true)
+    expect(wrapper.find('.chapter-discussion .comment-compose .rich-editor').exists()).toBe(true)
     expect(wrapper.find('.comment-compose textarea:not(.rich-editor)').exists()).toBe(false)
   })
 
@@ -387,21 +406,102 @@ describe('DashboardView ownership editing', () => {
     expect(wrapper.get('[data-annotation-card="note-1"]').classes()).toContain('is-active')
   })
 
-  it('opens the sidebar from the toolbar on the requested tab', async () => {
+  it('anchors to the discussion and offers the way back to where the reader was', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    Object.defineProperty(window, 'scrollY', { value: 1840, configurable: true })
+    await wrapper.get('.chapter-toolbar button[data-action="discussion"]').trigger('click')
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+
+    // Lazy images can leave the browser clamping that smooth scroll to a stale page height.
+    scrollIntoView.mockClear()
+    boundingTop = 453
+    window.dispatchEvent(new Event('scrollend'))
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+
+    scrollIntoView.mockClear()
+    boundingTop = 0
+    window.dispatchEvent(new Event('scrollend'))
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    const back = wrapper.get('.chapter-toolbar button[data-action="return-from-discussion"]')
+    expect(back.text()).toContain('返回')
+    expect(wrapper.find('.chapter-toolbar button[data-action="discussion"]').exists()).toBe(false)
+
+    await back.trigger('click')
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1840, behavior: 'smooth' })
+    expect(wrapper.get('.chapter-toolbar button[data-action="discussion"]').text()).toContain('讨论')
+  })
+
+  it('drops the way back once the discussion has scrolled out of sight', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await wrapper.get('.chapter-toolbar button[data-action="discussion"]').trigger('click')
+    expect(wrapper.find('.chapter-toolbar button[data-action="return-from-discussion"]').exists()).toBe(true)
+    expect(observed).toHaveLength(1)
+
+    observers[0]!([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver)
+    await flushPromises()
+
+    expect(wrapper.find('.chapter-toolbar button[data-action="return-from-discussion"]').exists()).toBe(false)
+    expect(wrapper.get('.chapter-toolbar button[data-action="discussion"]').text()).toContain('讨论')
+  })
+
+  it('forgets the way back when the reader changes chapter', async () => {
+    apiMock.getSubject.mockResolvedValueOnce(twoChapterSubject())
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    await wrapper.get('.chapter-toolbar button[data-action="discussion"]').trigger('click')
+    expect(wrapper.find('.chapter-toolbar button[data-action="return-from-discussion"]').exists()).toBe(true)
+
+    await openChapter(wrapper, '第二章')
+
+    expect(wrapper.find('.chapter-toolbar button[data-action="return-from-discussion"]').exists()).toBe(false)
+  })
+
+  it('jumps to the top and the bottom of the chapter', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+    Object.defineProperty(document.documentElement, 'scrollHeight', { value: 52000, configurable: true })
+
+    await wrapper.get('.chapter-toolbar button[data-action="scroll-top"]').trigger('click')
+    await wrapper.get('.chapter-toolbar button[data-action="scroll-bottom"]').trigger('click')
+
+    expect(scrollTo).toHaveBeenNthCalledWith(1, { top: 0, behavior: 'smooth' })
+    expect(scrollTo).toHaveBeenNthCalledWith(2, { top: 52000, behavior: 'smooth' })
+  })
+
+  it('never lets the sidebar resize the chapter column, and does not slide it under the whiteboard', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    const column = wrapper.get('.chapter-document')
+    expect(column.classes()).not.toContain('is-shifted')
+
+    await wrapper.get('.chapter-toolbar button[data-action="annotations"]').trigger('click')
+    expect(column.classes()).toContain('is-shifted')
+
+    await wrapper.get('.chapter-toolbar button[data-action="whiteboard"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
+    expect(column.classes()).not.toContain('is-shifted')
+  })
+
+  it('opens the annotation sidebar from the toolbar', async () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
     expect(wrapper.get('.annotation-sidebar').classes()).toContain('is-collapsed')
 
-    await wrapper.get('.chapter-toolbar button[data-action="comments"]').trigger('click')
-    expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
-    expect(wrapper.get('[data-tab="comments"]').classes()).toContain('active')
-    expect(wrapper.find('.comment-compose').exists()).toBe(true)
-
-    await wrapper.get('.annotation-sidebar-handle').trigger('click')
     await wrapper.get('.chapter-toolbar button[data-action="annotations"]').trigger('click')
     expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
-    expect(wrapper.get('[data-tab="annotations"]').classes()).toContain('active')
+    expect(wrapper.get('.annotation-sidebar-heading').text()).toContain('标注')
     expect(wrapper.find('.annotation-composer').exists()).toBe(true)
   })
 
@@ -597,7 +697,6 @@ describe('DashboardView ownership editing', () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
-    await wrapper.get('[data-tab="comments"]').trigger('click')
     await wrapper.get('.comment-compose .rich-editor').setValue('<p>第一章的问题</p>')
     await wrapper.findAll('.comment-compose button').find((button) => button.text() === '发送')!.trigger('click')
     await openChapter(wrapper, '第二章')
@@ -614,7 +713,7 @@ describe('DashboardView ownership editing', () => {
 
     expect(apiMock.createComment).toHaveBeenCalledWith('chapter-id', '<p>第一章的问题</p>')
     expect(wrapper.findAll('.comment-item')).toHaveLength(0)
-    expect(wrapper.get('.chapter-toolbar button[data-action="comments"]').text()).toContain('讨论 0')
+    expect(wrapper.get('.chapter-toolbar button[data-action="discussion"]').text()).toContain('讨论 0')
   })
 })
 

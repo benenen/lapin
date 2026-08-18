@@ -15,6 +15,7 @@ function mountToolbar(props: Record<string, unknown> = {}) {
       whiteboardLoading: false,
       whiteboardError: false,
       saving: false,
+      discussionAnchored: false,
       ...props,
     },
   })
@@ -25,16 +26,40 @@ describe('ChapterToolbar', () => {
     const wrapper = mountToolbar()
 
     const labels = wrapper.findAll('button').map((button) => button.text())
-    expect(labels).toEqual(['白板', '标注 2', '讨论 3'])
+    expect(labels).toEqual(['白板', '标注 2', '讨论 3', '', ''])
   })
 
-  it('opens the sidebar on the matching tab', async () => {
+  it('opens the annotation sidebar and the discussion', async () => {
     const wrapper = mountToolbar()
 
-    await wrapper.findAll('button')[1]!.trigger('click')
-    await wrapper.findAll('button')[2]!.trigger('click')
+    await wrapper.get('button[data-action="annotations"]').trigger('click')
+    await wrapper.get('button[data-action="discussion"]').trigger('click')
 
-    expect(wrapper.emitted('open-sidebar')).toEqual([['annotations'], ['comments']])
+    expect(wrapper.emitted('open-annotations')).toHaveLength(1)
+    expect(wrapper.emitted('open-discussion')).toHaveLength(1)
+  })
+
+  it('turns the discussion button into a way back once the reader is anchored there', async () => {
+    const wrapper = mountToolbar({ discussionAnchored: true })
+
+    expect(wrapper.find('button[data-action="discussion"]').exists()).toBe(false)
+    const back = wrapper.get('button[data-action="return-from-discussion"]')
+    expect(back.text()).toBe('返回')
+    await back.trigger('click')
+
+    expect(wrapper.emitted('return-from-discussion')).toHaveLength(1)
+  })
+
+  it('offers the chapter jumps in every mode', async () => {
+    for (const mode of ['reading', 'selecting', 'whiteboard']) {
+      const wrapper = mountToolbar({ mode, quote: '上下文工程' })
+
+      await wrapper.get('button[data-action="scroll-top"]').trigger('click')
+      await wrapper.get('button[data-action="scroll-bottom"]').trigger('click')
+
+      expect(wrapper.emitted('scroll-top'), mode).toHaveLength(1)
+      expect(wrapper.emitted('scroll-bottom'), mode).toHaveLength(1)
+    }
   })
 
   it('morphs into the selection actions and keeps the quote visible', async () => {
@@ -76,7 +101,8 @@ describe('ChapterToolbar', () => {
   it('drops the discussion button while the whiteboard is open', () => {
     const wrapper = mountToolbar({ mode: 'whiteboard' })
 
-    expect(wrapper.find('button[data-action="comments"]').exists()).toBe(false)
+    expect(wrapper.find('button[data-action="discussion"]').exists()).toBe(false)
+    expect(wrapper.find('button[data-action="return-from-discussion"]').exists()).toBe(false)
     expect(wrapper.find('button[data-action="annotations"]').exists()).toBe(true)
   })
 
@@ -102,7 +128,7 @@ describe('ChapterToolbar', () => {
     const wrapper = mountToolbar({ mode: 'selecting', quote: '正文' })
 
     const actions = wrapper.findAll('button[data-action]').map((button) => button.attributes('data-action'))
-    expect(actions).toEqual(['compose', 'whiteboard', 'cancel'])
+    expect(actions).toEqual(['compose', 'whiteboard', 'cancel', 'scroll-top', 'scroll-bottom'])
 
     const whiteboard = wrapper.get('button[data-action="whiteboard"]')
     expect(whiteboard.attributes('aria-pressed')).toBe('false')

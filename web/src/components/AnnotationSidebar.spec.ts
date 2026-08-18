@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import AnnotationSidebar from './AnnotationSidebar.vue'
-import type { Annotation, Comment } from '../types'
+import type { Annotation } from '../types'
 
 const annotation = (id: string, note: string): Annotation => ({
   id,
@@ -17,26 +17,13 @@ const annotation = (id: string, note: string): Annotation => ({
   created_at: '2026-08-18T00:00:00Z',
 })
 
-const comment = (id: string, body: string): Comment => ({
-  id,
-  chapter_id: 'chapter-a',
-  user_id: 'user-a',
-  author_name: '学习者',
-  body,
-  created_at: '2026-08-18T00:00:00Z',
-})
-
 function mountSidebar(props: Record<string, unknown> = {}) {
   return mount(AnnotationSidebar, {
     props: {
       open: true,
-      tab: 'annotations',
       annotations: [annotation('note-1', '第一条标注')],
-      comments: [comment('comment-1', '第一条讨论')],
       draft: { quote: '', note: '', color: 'yellow' },
       activeAnnotationId: '',
-      commentBody: '',
-      userName: '学习者',
       ...props,
     },
     global: {
@@ -75,37 +62,23 @@ describe('AnnotationSidebar', () => {
     expect(wrapper.get('.annotation-sidebar-handle').attributes('aria-expanded')).toBe('false')
   })
 
-  it('completes the tablist contract for assistive technology', async () => {
+  it('names the panel for assistive technology without pretending to be a tablist', () => {
     const wrapper = mountSidebar()
 
-    const annotationsTab = wrapper.get('button[data-tab="annotations"]')
-    const commentsTab = wrapper.get('button[data-tab="comments"]')
-    expect(wrapper.get('[role="tablist"]').attributes('aria-label')).toBe('标注与讨论')
-    expect(annotationsTab.attributes('role')).toBe('tab')
-    expect(commentsTab.attributes('role')).toBe('tab')
-    expect(annotationsTab.attributes('aria-selected')).toBe('true')
-    expect(commentsTab.attributes('aria-selected')).toBe('false')
-
-    const panel = wrapper.get('.annotation-sidebar-panel')
-    expect(panel.attributes('role')).toBe('tabpanel')
-    expect(panel.attributes('aria-labelledby')).toBe(annotationsTab.attributes('id'))
-    expect(annotationsTab.attributes('aria-controls')).toBe(panel.attributes('id'))
-
-    await wrapper.setProps({ tab: 'comments' })
-
-    const commentsPanel = wrapper.get('.annotation-sidebar-panel')
-    expect(wrapper.get('button[data-tab="comments"]').attributes('aria-selected')).toBe('true')
-    expect(commentsPanel.attributes('role')).toBe('tabpanel')
-    expect(commentsPanel.attributes('aria-labelledby')).toBe(commentsTab.attributes('id'))
-    expect(wrapper.get('button[data-tab="comments"]').attributes('aria-controls')).toBe(commentsPanel.attributes('id'))
+    const heading = wrapper.get('.annotation-sidebar-heading')
+    expect(heading.element.tagName).toBe('H2')
+    expect(wrapper.get('.annotation-sidebar').attributes('aria-labelledby')).toBe(heading.attributes('id'))
+    expect(wrapper.find('[role="tab"]').exists()).toBe(false)
+    expect(wrapper.find('[role="tabpanel"]').exists()).toBe(false)
   })
 
-  it('switches between the annotation and discussion tabs', async () => {
+  it('is an annotation panel with no tab strip left', () => {
     const wrapper = mountSidebar()
 
-    await wrapper.get('button[data-tab="comments"]').trigger('click')
-
-    expect(wrapper.emitted('update:tab')).toEqual([['comments']])
+    expect(wrapper.get('.annotation-sidebar-heading').text()).toBe('标注 1')
+    expect(wrapper.find('[role="tablist"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tab]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('讨论')
   })
 
   it('shows the captured quote and colour in the composer', () => {
@@ -141,13 +114,4 @@ describe('AnnotationSidebar', () => {
     expect(wrapper.get('.annotation-card').classes()).toContain('is-active')
   })
 
-  it('renders the discussion tab with its composer and list', async () => {
-    const wrapper = mountSidebar({ tab: 'comments' })
-
-    expect(wrapper.text()).toContain('第一条讨论')
-    expect(wrapper.find('.annotation-composer').exists()).toBe(false)
-    await wrapper.get('.comment-compose .rich-editor').setValue('新讨论')
-
-    expect(wrapper.emitted('update:commentBody')).toEqual([['新讨论']])
-  })
 })
