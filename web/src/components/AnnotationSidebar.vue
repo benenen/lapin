@@ -1,0 +1,156 @@
+<script setup lang="ts">
+import { computed, nextTick, watch } from 'vue'
+import Avatar from 'primevue/avatar'
+import Button from 'primevue/button'
+
+import type { Annotation, Comment } from '../types'
+import RichTextContent from './RichTextContent.vue'
+import RichTextEditor from './RichTextEditor.vue'
+
+interface AnnotationDraft {
+  quote: string
+  note: string
+  color: string
+}
+
+const props = defineProps<{
+  open: boolean
+  tab: 'annotations' | 'comments'
+  annotations: Annotation[]
+  comments: Comment[]
+  draft: AnnotationDraft
+  activeAnnotationId: string
+  commentBody: string
+  userName: string
+}>()
+
+const emit = defineEmits<{
+  'update:open': [open: boolean]
+  'update:tab': [tab: 'annotations' | 'comments']
+  'update:draft': [draft: AnnotationDraft]
+  'update:commentBody': [body: string]
+  'save-annotation': []
+  'post-comment': []
+}>()
+
+const colors = ['yellow', 'green', 'blue', 'pink']
+const canSave = computed(() => props.draft.note.trim().length > 0)
+
+watch(() => props.activeAnnotationId, async (id) => {
+  if (!id) return
+  await nextTick()
+  document.querySelector(`[data-annotation-card="${id}"]`)?.scrollIntoView({ block: 'nearest' })
+})
+
+function updateDraft(patch: Partial<AnnotationDraft>) {
+  emit('update:draft', { ...props.draft, ...patch })
+}
+
+// PrimeVue's Button component does not declare `emits: ['click']`, so a
+// parent `@click` listener is both re-emitted by Button's own template and
+// applied to Button's root element via Vue's native attribute fallthrough.
+// That makes a single physical click invoke the listener twice. Guard each
+// action so one click only ever produces one outbound event.
+let saveAnnotationPending = false
+function handleSaveAnnotation() {
+  if (saveAnnotationPending) return
+  saveAnnotationPending = true
+  emit('save-annotation')
+  queueMicrotask(() => { saveAnnotationPending = false })
+}
+
+let postCommentPending = false
+function handlePostComment() {
+  if (postCommentPending) return
+  postCommentPending = true
+  emit('post-comment')
+  queueMicrotask(() => { postCommentPending = false })
+}
+</script>
+
+<template>
+  <aside class="annotation-sidebar" :class="{ 'is-collapsed': !props.open }">
+    <button
+      type="button"
+      class="annotation-sidebar-handle"
+      :aria-expanded="props.open"
+      :title="props.open ? '收起标注栏' : '展开标注栏'"
+      :aria-label="props.open ? '收起标注栏' : '展开标注栏'"
+      @click="emit('update:open', !props.open)"
+    >
+      <i class="pi" :class="props.open ? 'pi-chevron-right' : 'pi-chevron-left'" />
+    </button>
+
+    <div class="annotation-sidebar-body">
+      <div class="annotation-sidebar-tabs" role="tablist">
+        <button type="button" data-tab="annotations" :class="{ active: props.tab === 'annotations' }" @click="emit('update:tab', 'annotations')">
+          标注 {{ props.annotations.length }}
+        </button>
+        <button type="button" data-tab="comments" :class="{ active: props.tab === 'comments' }" @click="emit('update:tab', 'comments')">
+          讨论 {{ props.comments.length }}
+        </button>
+      </div>
+
+      <section v-if="props.tab === 'annotations'" class="annotation-sidebar-panel">
+        <div class="annotation-composer">
+          <h3>新建标注</h3>
+          <blockquote v-if="props.draft.quote">“{{ props.draft.quote }}”</blockquote>
+          <p v-else class="annotation-empty-quote">先在正文里选中一段文字。</p>
+          <RichTextEditor
+            class="compact-rich-text-editor"
+            :model-value="props.draft.note"
+            @update:model-value="updateDraft({ note: $event })"
+          />
+          <div class="annotation-actions">
+            <div class="annotation-colors">
+              <button
+                v-for="color in colors"
+                :key="color"
+                type="button"
+                :data-color="color"
+                :class="[color, { active: props.draft.color === color }]"
+                :aria-label="`标注颜色 ${color}`"
+                @click="updateDraft({ color })"
+              />
+            </div>
+            <Button label="保存标注" size="small" :disabled="!canSave" @click="handleSaveAnnotation" />
+          </div>
+        </div>
+        <div class="annotation-list">
+          <div
+            v-for="item in props.annotations"
+            :key="item.id"
+            :data-annotation-card="item.id"
+            class="annotation-card"
+            :class="[item.color, { 'is-active': item.id === props.activeAnnotationId }]"
+          >
+            <small>{{ item.author_name }} · {{ new Date(item.created_at).toLocaleString() }}</small>
+            <q v-if="item.quote">{{ item.quote }}</q>
+            <RichTextContent :content="item.note" />
+          </div>
+        </div>
+      </section>
+
+      <section v-else class="annotation-sidebar-panel comments-panel">
+        <div class="comment-compose">
+          <Avatar :label="props.userName.slice(0, 1)" shape="circle" />
+          <RichTextEditor
+            class="compact-rich-text-editor"
+            :model-value="props.commentBody"
+            @update:model-value="emit('update:commentBody', $event)"
+          />
+          <Button label="发送" icon="pi pi-send" :disabled="!props.commentBody.trim()" @click="handlePostComment" />
+        </div>
+        <div v-if="props.comments.length === 0" class="empty-comments">还没有讨论，来提出第一个问题吧。</div>
+        <div v-for="item in props.comments" :key="item.id" class="comment-item">
+          <Avatar :label="item.author_name.slice(0, 1)" shape="circle" />
+          <div>
+            <strong>{{ item.author_name }}</strong>
+            <small>{{ new Date(item.created_at).toLocaleString() }}</small>
+            <RichTextContent :content="item.body" />
+          </div>
+        </div>
+      </section>
+    </div>
+  </aside>
+</template>

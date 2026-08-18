@@ -145,6 +145,23 @@ button, input, textarea { font: inherit; }
 .annotation-card small, .annotation-card q { display: block; color: #899087; }
 .annotation-card p { margin: .35rem 0 0; }
 
+.annotation-sidebar { position: sticky; top: 1rem; align-self: start; width: 20rem; max-height: calc(100vh - 2rem); transition: transform .22s ease, width .22s ease; }
+.annotation-sidebar.is-collapsed { width: 0; transform: translateX(100%); }
+.annotation-sidebar-handle { position: absolute; top: 50%; left: -1.35rem; z-index: 2; display: flex; align-items: center; justify-content: center; width: 1.35rem; height: 3.2rem; padding: 0; border: 1px solid #dcddd4; border-right: 0; border-radius: 8px 0 0 8px; color: #33483e; background: #fbfaf6; transform: translateY(-50%); cursor: pointer; }
+.annotation-sidebar-body { display: flex; flex-direction: column; overflow: hidden; max-height: inherit; border: 1px solid #dcddd4; border-radius: 12px; background: #fbfaf6; }
+.annotation-sidebar.is-collapsed .annotation-sidebar-body { visibility: hidden; }
+.annotation-sidebar-tabs { display: flex; border-bottom: 1px solid #dcddd4; }
+.annotation-sidebar-tabs button { flex: 1; padding: .7rem; border: 0; color: #6d664f; background: transparent; cursor: pointer; }
+.annotation-sidebar-tabs button.active { color: #33483e; box-shadow: inset 0 -2px 0 #33483e; }
+.annotation-sidebar-panel { overflow: auto; padding: 1rem; }
+.annotation-composer h3 { margin-top: 0; font-family: Georgia, serif; }
+.annotation-composer blockquote { margin: .7rem 0; padding: .7rem; border-left: 3px solid #d5ad52; color: #6d664f; background: #f8f1d9; }
+.annotation-empty-quote { color: #899087; }
+.annotation-card.is-active { box-shadow: 0 0 0 2px #33483e; }
+@media (max-width: 900px) {
+  .annotation-sidebar { position: fixed; top: 0; right: 0; z-index: 40; max-height: 100vh; }
+}
+
 .anchored-whiteboard { position: relative; }
 .whiteboard-viewport { width: 100%; overflow: visible; background: transparent; }
 .whiteboard-stage { position: relative; overflow: visible; margin: 0; background: transparent; }
