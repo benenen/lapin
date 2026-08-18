@@ -152,13 +152,18 @@ button, input, textarea { font: inherit; }
 .annotation-composer blockquote { margin: .7rem 0; padding: .7rem; border-left: 3px solid #d5ad52; color: #6d664f; background: #f8f1d9; }
 .annotation-empty-quote { color: #899087; }
 .annotation-card.is-active { box-shadow: 0 0 0 2px #33483e; }
-.annotation-mark { border-radius: 3px; box-shadow: inset 0 -.5em 0 rgba(240, 214, 123, .55); cursor: pointer; }
-.annotation-mark-yellow { box-shadow: inset 0 -.5em 0 rgba(240, 214, 123, .55); }
-.annotation-mark-green { box-shadow: inset 0 -.5em 0 rgba(159, 207, 168, .55); }
-.annotation-mark-blue { box-shadow: inset 0 -.5em 0 rgba(158, 190, 219, .55); }
-.annotation-mark-pink { box-shadow: inset 0 -.5em 0 rgba(231, 174, 182, .55); }
-.annotation-mark:hover { box-shadow: inset 0 -1.1em 0 rgba(213, 173, 82, .35); }
-@media (max-width: 900px) {
+/* Each colour carries its own tint, corner dot and hover shade, so hovering a green mark never
+   repaints it yellow. The dot is the 右上角小圆点角标 that tells a mark from ordinary emphasis. */
+.annotation-mark { --annotation-tint: rgba(240, 214, 123, .55); --annotation-hover: rgba(240, 214, 123, .9); --annotation-dot: #d9b43d; position: relative; border-radius: 3px; box-shadow: inset 0 -.5em 0 var(--annotation-tint); cursor: pointer; }
+.annotation-mark::after { position: absolute; top: -.2em; right: -.25em; width: .34em; height: .34em; border-radius: 50%; background: var(--annotation-dot); content: ""; }
+.annotation-mark:hover { box-shadow: inset 0 -1.1em 0 var(--annotation-hover); }
+.annotation-mark-yellow { --annotation-tint: rgba(240, 214, 123, .55); --annotation-hover: rgba(240, 214, 123, .9); --annotation-dot: #d9b43d; }
+.annotation-mark-green { --annotation-tint: rgba(159, 207, 168, .55); --annotation-hover: rgba(159, 207, 168, .9); --annotation-dot: #63a171; }
+.annotation-mark-blue { --annotation-tint: rgba(158, 190, 219, .55); --annotation-hover: rgba(158, 190, 219, .9); --annotation-dot: #548bb8; }
+.annotation-mark-pink { --annotation-tint: rgba(231, 174, 182, .55); --annotation-hover: rgba(231, 174, 182, .9); --annotation-dot: #c56f7d; }
+/* Matches the .notes-grid single-column breakpoint below: between the two the sidebar would
+   otherwise fall under the text as a stacked 20rem box instead of becoming a drawer. */
+@media (max-width: 960px) {
   .annotation-sidebar { position: fixed; top: 0; right: 0; z-index: 40; max-height: 100vh; }
 }
 
@@ -175,11 +180,6 @@ button, input, textarea { font: inherit; }
 .excalidraw-host .App-toolbar__extra-tools-trigger { display: none !important; }
 .excalidraw-host .App-bottom-bar, .excalidraw-host .mobile-misc-tools-container, .excalidraw-host .HintViewer { display: none !important; }
 .excalidraw-host .ToolIcon:has([data-testid="toolbar-hand"]) { display: none !important; }
-.excalidraw-host .App-toolbar-container[data-lapin-draggable-toolbar="true"] { position: relative; z-index: 5; width: max-content; max-width: none; }
-.excalidraw-host .lapin-excalidraw-action { display: inline-flex; flex: 0 0 36px; align-items: center; justify-content: center; width: 36px; height: 36px; }
-.excalidraw-host .lapin-toolbar-icon, .excalidraw-host .lapin-toolbar-icon svg { display: block; width: 20px; height: 20px; }
-.excalidraw-host .lapin-toolbar-drag-handle { cursor: grab; touch-action: none; }
-.excalidraw-host .lapin-toolbar-drag-handle:active { cursor: grabbing; }
 .chapter-toolbar { position: sticky; bottom: 1.5rem; z-index: 30; display: flex; align-items: center; justify-content: center; gap: .35rem; width: max-content; max-width: 100%; margin: 1.5rem auto 0; padding: .35rem .5rem; border: 1px solid #dcddd4; border-radius: 999px; background: rgba(251, 250, 246, .86); box-shadow: 0 6px 20px rgba(51, 72, 62, .14); backdrop-filter: blur(12px); transition: width .2s ease; }
 .chapter-toolbar button { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .8rem; border: 0; border-radius: 999px; color: #33483e; background: transparent; cursor: pointer; transition: background .15s ease; }
 .chapter-toolbar button:hover:not(:disabled) { background: #eceade; }
