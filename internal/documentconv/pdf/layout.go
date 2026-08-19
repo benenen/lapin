@@ -466,6 +466,13 @@ func joinPDFText(left, right string) string {
 	if right == "" {
 		return left
 	}
+	// A PDF carries the bold flag per text fragment, so one bold phrase arrives as several
+	// fragments and each is wrapped on its own. Concatenating them would emit
+	// "**结构化轨迹****第**", and renderers disagree about what four asterisks between two words
+	// mean — the chapter ends up showing them literally. Merge the runs into a single one.
+	if strings.HasSuffix(left, "**") && strings.HasPrefix(right, "**") && len(left) > 2 && len(right) > 2 {
+		return joinPDFText(strings.TrimSuffix(left, "**"), strings.TrimPrefix(right, "**"))
+	}
 	last, _ := utf8.DecodeLastRuneInString(left)
 	first, _ := utf8.DecodeRuneInString(right)
 	if (isASCIIWord(last) && unicode.IsLetter(first)) || (unicode.IsLetter(last) && isASCIIWord(first)) {
