@@ -55,4 +55,41 @@ describe('Tiptap Markdown storage', () => {
     expect(html.match(/已阻止外部图片/g)?.length).toBeGreaterThanOrEqual(2)
     editor.destroy()
   })
+
+  // Chapters imported from PDFs are Chinese prose full of prices. The stock inline-math
+  // tokenizer turns any pair of dollar signs on a line into KaTeX, so a sentence quoting two
+  // amounts rendered as a serif formula with the currency signs swallowed.
+  it('leaves currency alone instead of rendering it as a formula', () => {
+    const markdown = '"年度总收入$7,061,089.71，季度均值$2,353,696.57"\n\n合计 $9,602,895.73, Average: $2,400,723.93\n\n方案 A 花了 $150 就省了 $50。'
+    const editor = new Editor({
+      extensions: createEditorExtensions(),
+      content: markdown,
+      contentType: 'markdown',
+    })
+
+    const kinds: string[] = []
+    editor.state.doc.descendants((node) => { kinds.push(node.type.name) })
+    expect(kinds).not.toContain('inlineMath')
+
+    const text = editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n', '')
+    expect(text).toContain('$7,061,089.71')
+    expect(text).toContain('$150')
+    editor.destroy()
+  })
+
+  it('still recognises real inline formulas', () => {
+    const markdown = '复杂度是 $O(n \\log n)$，损失为 $\\mathcal{L}(\\theta)$。'
+    const editor = new Editor({
+      extensions: createEditorExtensions(),
+      content: markdown,
+      contentType: 'markdown',
+    })
+
+    const latex: string[] = []
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'inlineMath') latex.push(String(node.attrs.latex))
+    })
+    expect(latex).toEqual(['O(n \\log n)', '\\mathcal{L}(\\theta)'])
+    editor.destroy()
+  })
 })
