@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../auth/application/session_controller.dart';
 import '../domain/subject.dart';
 
 class SubjectRepository {
@@ -24,11 +25,19 @@ final Provider<SubjectRepository> subjectRepositoryProvider = Provider<SubjectRe
   (Ref ref) => SubjectRepository(ref.watch(apiClientProvider)),
 );
 
+// Both depend on the session on purpose. go_router builds the initial route
+// before its redirect runs, so the library page mounts once while nobody is
+// signed in and its request comes back 401. Without this dependency Riverpod
+// would keep serving that cached error after a successful sign-in, and the
+// reader would stare at 请先登录 with a working 重试 button as the only way out.
+// Courses are per-user anyway, so tying them to the session is also correct.
 final FutureProviderFamily<Subject, String> subjectProvider =
-    FutureProvider.family<Subject, String>(
-  (Ref ref, String id) => ref.watch(subjectRepositoryProvider).getSubject(id),
-);
+    FutureProvider.family<Subject, String>((Ref ref, String id) {
+  ref.watch(sessionProvider);
+  return ref.watch(subjectRepositoryProvider).getSubject(id);
+});
 
-final FutureProvider<List<Subject>> subjectsProvider = FutureProvider<List<Subject>>(
-  (Ref ref) => ref.watch(subjectRepositoryProvider).listSubjects(),
-);
+final FutureProvider<List<Subject>> subjectsProvider = FutureProvider<List<Subject>>((Ref ref) {
+  ref.watch(sessionProvider);
+  return ref.watch(subjectRepositoryProvider).listSubjects();
+});

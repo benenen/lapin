@@ -33,7 +33,7 @@ Future<void> pumpUntil(WidgetTester tester, Finder finder, {int seconds = 30}) a
     await tester.pump(const Duration(milliseconds: 200));
     if (finder.evaluate().isNotEmpty) return;
   }
-  fail('等待超时，未出现：${finder.description}');
+  fail('等待超时，未出现：$finder');
 }
 
 void main() {
@@ -61,22 +61,33 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '登录'));
 
     // 2. 课程列表
+    // 「我的课程」是 AppBar 标题，列表还在加载时它就已经渲染了，所以要等到列表项本身。
     await pumpUntil(tester, find.text('我的课程'));
+    await pumpUntil(tester, find.byType(ListTile));
     expect(find.byType(ListTile), findsWidgets, reason: '登录成功后应至少列出一个课程');
 
     // 3. 打开课程，等章节正文渲染出来
     await tester.tap(find.byType(ListTile).first);
-    await settle(tester, seconds: 3);
-    await pumpUntil(tester, find.byType(Drawer).evaluate().isEmpty ? find.byType(Scaffold) : find.byType(Scaffold));
-    await settle(tester, seconds: 8);
+    await settle(tester, seconds: 2);
+    // 章节页拉完 subject 详情后，AppBar 标题会变成章节名，返回按钮就位
+    await pumpUntil(tester, find.byIcon(Icons.arrow_back));
+    await settle(tester, seconds: 6);
 
     // Markdown 渲染出来的正文里应当有实际文字，而不是空白或错误页
     expect(find.textContaining('暂无正文'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing, reason: '正文应已加载完成');
-    final Iterable<Text> texts = tester.widgetList<Text>(find.byType(Text));
-    final int bodyCharacters = texts
-        .map((Text text) => text.data?.length ?? 0)
+    // Counting Text widgets is not enough. Markdown renders spans, and with
+    // selectable: true the body lives in EditableText, whose text a Text or
+    // RichText finder never sees. Sum both surfaces.
+    final int spanCharacters = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .map((RichText text) => text.text.toPlainText().length)
         .fold<int>(0, (int sum, int length) => sum + length);
+    final int selectableCharacters = tester
+        .widgetList<EditableText>(find.byType(EditableText))
+        .map((EditableText text) => text.controller.text.length)
+        .fold<int>(0, (int sum, int length) => sum + length);
+    final int bodyCharacters = spanCharacters + selectableCharacters;
     expect(bodyCharacters, greaterThan(200), reason: '章节正文应当渲染出可观的文字量');
     debugPrint('E2E_OK 渲染字符数=$bodyCharacters');
   });
