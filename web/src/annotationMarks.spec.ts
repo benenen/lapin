@@ -16,8 +16,12 @@ function docOf(markdown: string) {
   return doc
 }
 
-function annotation(id: string, start: number, end: number, color = 'yellow') {
-  return { id, start_offset: start, end_offset: end, color }
+function annotation(id: string, start: number, end: number, color = 'yellow', quote?: string) {
+  return { id, start_offset: start, end_offset: end, color, quote }
+}
+
+function quoted(doc: ReturnType<typeof docOf>, range: { from: number; to: number }) {
+  return doc.textBetween(range.from, range.to, '', () => '')
 }
 
 describe('annotation decoration ranges', () => {
@@ -58,14 +62,17 @@ describe('annotation decoration ranges', () => {
   })
 
   // An owner edit or a repeated OpenAPI import keeps the annotation but moves the chapter text.
-  // The offsets stay inside the document, so only the quote can tell that they no longer match.
-  it('skips an annotation whose quote no longer matches the offsets', () => {
+  // The offsets stay inside the document while pointing at the wrong words, so the quote — not
+  // the offsets — decides where the mark goes.
+  it('re-anchors on the quote rather than painting the words the offsets now cover', () => {
     const doc = docOf('前言。上下文工程是核心。')
 
     const stale = annotationDecorationRanges(doc, [{ ...annotation('a', 0, 5), quote: '上下文工程' }])
 
-    expect(stale).toEqual([])
+    expect(stale).toHaveLength(1)
+    // Offsets 0..5 now cover '前言。上下'; the annotation quoted '上下文工程' and lands there.
     expect(doc.textBetween(1, 6, '', () => '')).toBe('前言。上下')
+    expect(quoted(doc, stale[0]!)).toBe('上下文工程')
   })
 
   it('renders an annotation whose quote still matches the offsets', () => {
@@ -104,5 +111,54 @@ describe('annotation decoration ranges', () => {
     const doc = docOf('上下文工程是核心。')
 
     expect(annotationDecorationRanges(doc, [annotation('a', 0, 3, 'orange')])[0]!.color).toBe('yellow')
+  })
+
+  // 偏移锚定换成引用锚定：the stored offsets are only a hint, because the web and a future
+  // Flutter client derive them from different Markdown parsers and cannot be made to agree.
+  it('follows the quote when the stored offset has drifted', () => {
+    // The annotation was made against '上下文工程是核心。'; someone later prepended a sentence,
+    // so offsets 0..5 now cover '前言。上下' instead.
+    const doc = docOf('前言。上下文工程是核心。')
+
+    const ranges = annotationDecorationRanges(doc, [annotation('a', 0, 5, 'yellow', '上下文工程')])
+
+    expect(ranges).toHaveLength(1)
+    expect(quoted(doc, ranges[0]!)).toBe('上下文工程')
+  })
+
+  it('picks the occurrence nearest the stored offset when the quote repeats', () => {
+    const doc = docOf('上下文工程很重要。再谈上下文工程的细节。最后回到上下文工程。')
+
+    const near = annotationDecorationRanges(doc, [annotation('a', 24, 29, 'yellow', '上下文工程')])[0]!
+    const far = annotationDecorationRanges(doc, [annotation('b', 0, 5, 'yellow', '上下文工程')])[0]!
+
+    expect(quoted(doc, near)).toBe('上下文工程')
+    expect(quoted(doc, far)).toBe('上下文工程')
+    // The third occurrence starts at 24, the first at 0 — each annotation lands on its own.
+    expect(near.from).toBeGreaterThan(far.from)
+  })
+
+  it('keeps the stored offset when it still matches, even if the quote repeats', () => {
+    const doc = docOf('上下文工程很重要。再谈上下文工程的细节。')
+
+    const ranges = annotationDecorationRanges(doc, [annotation('a', 11, 16, 'yellow', '上下文工程')])
+
+    expect(quoted(doc, ranges[0]!)).toBe('上下文工程')
+    expect(ranges[0]!.from).toBeGreaterThan(10)
+  })
+
+  it('drops an annotation whose quote is gone from the chapter', () => {
+    const doc = docOf('这一段已经被完全改写了。')
+
+    expect(annotationDecorationRanges(doc, [annotation('a', 0, 5, 'yellow', '上下文工程')])).toEqual([])
+  })
+
+  it('anchors a quote that the stored offsets no longer even reach', () => {
+    // The chapter shrank: the offsets point past the end, but the passage is still there.
+    const doc = docOf('上下文工程是核心。')
+
+    const ranges = annotationDecorationRanges(doc, [annotation('a', 900, 905, 'yellow', '上下文工程')])
+
+    expect(quoted(doc, ranges[0]!)).toBe('上下文工程')
   })
 })
