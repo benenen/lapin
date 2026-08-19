@@ -40,6 +40,9 @@ const interactionReady = ref(false)
 const legacyResetAllowed = ref(false)
 let bridge: ExcalidrawBridge | null = null
 let resizeObserver: ResizeObserver | null = null
+let contentObserver: ResizeObserver | null = null
+// The floor rebuild() started from: a saved board's own space height, otherwise the minimum.
+let referenceFloor = WHITEBOARD_MIN_HEIGHT
 let windowFrame: number | null = null
 let rebuildGeneration = 0
 let interactionGeneration = 0
@@ -68,6 +71,10 @@ onMounted(() => {
     if (props.active) void prepareInteraction()
   })
   if (viewport.value) resizeObserver.observe(viewport.value)
+  // Chapter images, web fonts and KaTeX all land after the first measurement, so the rendered
+  // height grows underneath us. Without this the stage keeps its stale height and whatever the
+  // page puts after it — the discussion — sits on top of the tail of the chapter.
+  contentObserver = new ResizeObserver(() => measureContent())
   window.addEventListener('scroll', scheduleWindowSync, { capture: true, passive: true })
   void rebuild()
 })
@@ -76,6 +83,7 @@ onBeforeUnmount(() => {
   rebuildGeneration++
   interactionGeneration++
   resizeObserver?.disconnect()
+  contentObserver?.disconnect()
   window.removeEventListener('scroll', scheduleWindowSync, { capture: true })
   if (windowFrame !== null) cancelAnimationFrame(windowFrame)
   windowFrame = null
@@ -85,6 +93,19 @@ onBeforeUnmount(() => {
 watch(() => props.chapterId, () => { legacyResetAllowed.value = false })
 watch(() => [props.chapterId, props.content, props.modelValue] as const, () => void rebuild(), { deep: true })
 watch(() => props.active, () => { void prepareInteraction() })
+
+// Re-reads the rendered chapter height and grows the stage to match. Called on every content
+// resize, so it must be cheap and must not feed itself: the observed element's height comes from
+// its own content, never from the stage height it sets here.
+function measureContent() {
+  const renderedContent = contentLayer.value?.firstElementChild as HTMLElement | null
+  const measured = renderedContent?.scrollHeight ?? 0
+  const nextReference = whiteboardReferenceHeight(measured, referenceFloor)
+  if (measured === contentReferenceHeight.value && nextReference === referenceHeight.value) return
+  contentReferenceHeight.value = measured
+  referenceHeight.value = nextReference
+  syncScale()
+}
 
 function syncScale() {
   scale.value = viewportScale(viewport.value?.getBoundingClientRect().width ?? referenceWidth.value, referenceWidth.value)
@@ -153,10 +174,11 @@ async function rebuild() {
   referenceHeight.value = saved?.space.height ?? legacy?.space.height ?? WHITEBOARD_MIN_HEIGHT
   await nextTick()
   if (generation !== rebuildGeneration) return
+  referenceFloor = referenceHeight.value
   const renderedContent = contentLayer.value?.firstElementChild as HTMLElement | null
-  contentReferenceHeight.value = renderedContent?.scrollHeight ?? 0
-  referenceHeight.value = whiteboardReferenceHeight(contentReferenceHeight.value, referenceHeight.value)
-  syncScale()
+  contentObserver?.disconnect()
+  if (renderedContent) contentObserver?.observe(renderedContent)
+  measureContent()
   if (generation !== rebuildGeneration) return
   if (legacy && !legacyResetAllowed.value) return
   if (!editorHost.value) return

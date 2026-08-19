@@ -22,7 +22,10 @@ vi.mock('../whiteboard', async (importOriginal) => ({
   chapterContentRevision: vi.fn(async () => 'sha256:test'),
 }))
 
+const resizeCallbacks: ResizeObserverCallback[] = []
+
 class ResizeObserverStub {
+  constructor(callback: ResizeObserverCallback) { resizeCallbacks.push(callback) }
   observe() {}
   disconnect() {}
 }
@@ -35,6 +38,7 @@ describe('ExcalidrawWhiteboard visibility', () => {
       return animationFrames.length
     })
     animationFrames.length = 0
+    resizeCallbacks.length = 0
     vi.clearAllMocks()
   })
 
@@ -81,6 +85,43 @@ describe('ExcalidrawWhiteboard visibility', () => {
     await wrapper.setProps({ active: true })
     await flushPromises()
     expect(mountExcalidrawMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('grows the stage when the chapter gets taller after the first measurement', async () => {
+    // Images, web fonts and KaTeX all land after the initial measurement.
+    let renderedHeight = 4000
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get(this: HTMLElement) { return this.classList.contains('chapter-content') ? renderedHeight : 0 },
+    })
+    vi.stubGlobal('innerHeight', 900)
+
+    try {
+      const wrapper = mount(ExcalidrawWhiteboard, {
+        props: { chapterId: 'chapter-a', content: '# 正文', active: false },
+        global: {
+          stubs: {
+            Button: { template: '<button><slot /></button>' },
+            Message: { template: '<div><slot /></div>' },
+            RichTextContent: { template: '<div class="chapter-content">正文</div>' },
+          },
+        },
+      })
+      await flushPromises()
+      expect(wrapper.get('.whiteboard-stage').attributes('style')).toContain('height: 4000px')
+
+      renderedHeight = 7797
+      resizeCallbacks.forEach((callback) => callback([], {} as ResizeObserver))
+      await flushPromises()
+
+      // The stage has to cover the taller chapter, or whatever follows it on the page overlaps
+      // the tail of the text.
+      expect(wrapper.get('.whiteboard-stage').attributes('style')).toContain('height: 7797px')
+    } finally {
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight)
+      vi.unstubAllGlobals()
+    }
   })
 
   it('bounds the drawable overlay on a chapter taller than a browser canvas', async () => {

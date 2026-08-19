@@ -126,7 +126,9 @@ button, input, textarea { font: inherit; }
    shrinking, so the line breaks still never move. The distance is measured at runtime and capped
    by the room to the chapter navigation — see chapterColumnShift. */
 .chapter-document { transform: translateX(calc(var(--chapter-shift, 0px) * -1)); }
-.chapter-discussion { margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid #dcddd4; }
+/* The last section on the page: without a viewport-sized floor an empty discussion cannot be
+   scrolled to the top at all, so 讨论 would land wherever the page happens to end. */
+.chapter-discussion { min-height: calc(100vh - 8rem); margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid #dcddd4; }
 .chapter-discussion h2 { margin: 0 0 1.2rem; font-family: Georgia, serif; font-size: 1.5rem; }
 .chapter-content { margin: 0; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; font-size: 1.08rem; line-height: 2; white-space: normal; }
 .chapter-content .tiptap { outline: none; }
@@ -189,7 +191,11 @@ button, input, textarea { font: inherit; }
 .excalidraw-host .excalidraw, .excalidraw-host .excalidraw .App-menu_top { background: transparent !important; }
 .excalidraw-host .main-menu-trigger { display: none !important; }
 .excalidraw-host .App-toolbar__extra-tools-trigger { display: none !important; }
+/* The camera is locked to the chapter anchor and undo/redo live in the floating toolbar, so the
+   whole Excalidraw footer — zoom controls and its own undo/redo — is noise the reader can only
+   use to break the anchoring. */
 .excalidraw-host .App-bottom-bar, .excalidraw-host .mobile-misc-tools-container, .excalidraw-host .HintViewer { display: none !important; }
+.excalidraw-host .App-menu_bottom { display: none !important; }
 .excalidraw-host .ToolIcon:has([data-testid="toolbar-hand"]) { display: none !important; }
 .chapter-toolbar { position: sticky; bottom: 1.5rem; z-index: 30; display: flex; align-items: center; justify-content: center; gap: .35rem; width: max-content; max-width: 100%; margin: 1.5rem auto 0; padding: .35rem .5rem; border: 1px solid #dcddd4; border-radius: 999px; background: rgba(251, 250, 246, .86); box-shadow: 0 6px 20px rgba(51, 72, 62, .14); backdrop-filter: blur(12px); transition: width .2s ease; }
 .chapter-toolbar button { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .8rem; border: 0; border-radius: 999px; color: #33483e; background: transparent; cursor: pointer; transition: background .15s ease; }
