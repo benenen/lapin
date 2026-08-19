@@ -122,11 +122,10 @@ button, input, textarea { font: inherit; }
    is too long to read comfortably anyway. */
 .notes-grid { display: block; }
 .chapter-document { max-width: 46rem; margin-inline: auto; transition: transform .22s ease; }
-/* Fallback for viewports where the floating sidebar would cover the right edge of the text:
-   slide the column instead of shrinking it, so the line breaks still never move. Deliberately
-   not applied while the whiteboard is up — a transform on an ancestor invalidates the DOM
-   offsets Excalidraw caches, and ink would land off the pointer. */
-.chapter-document.is-shifted { transform: translateX(-10rem); }
+/* Where the floating panel would cover the right edge of the text, the column slides instead of
+   shrinking, so the line breaks still never move. The distance is measured at runtime and capped
+   by the room to the chapter navigation — see chapterColumnShift. */
+.chapter-document { transform: translateX(calc(var(--chapter-shift, 0px) * -1)); }
 .chapter-discussion { margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid #dcddd4; }
 .chapter-discussion h2 { margin: 0 0 1.2rem; font-family: Georgia, serif; font-size: 1.5rem; }
 .chapter-content { margin: 0; color: #293a33; font-family: Georgia, "Noto Serif SC", serif; font-size: 1.08rem; line-height: 2; white-space: normal; }
@@ -176,7 +175,7 @@ button, input, textarea { font: inherit; }
    reads and closes, and the column stays exactly where it was. */
 @media (max-width: 1100px) {
   .annotation-sidebar { top: 4.8rem; max-height: calc(100vh - 4.8rem); }
-  .chapter-document.is-shifted { transform: none; }
+  .chapter-document { transform: none; }
 }
 
 .anchored-whiteboard { position: relative; }

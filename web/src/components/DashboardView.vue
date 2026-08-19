@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
@@ -12,6 +12,7 @@ import Textarea from 'primevue/textarea'
 import { api } from '../api'
 import lapinLogo from '../assets/lapin-logo.svg'
 import { buildChapterTree } from '../chapterTree'
+import { chapterColumnShift } from '../chapterLayout'
 import type { AccessToken, Annotation, Comment, PersistedWhiteboardData, Subject, User, Whiteboard, WhiteboardData } from '../types'
 import AnnotationSidebar from './AnnotationSidebar.vue'
 import ChapterDiscussion from './ChapterDiscussion.vue'
@@ -32,6 +33,9 @@ const whiteboardVisible = ref(false)
 const sidebarOpen = ref(false)
 const activeAnnotationId = ref('')
 const discussionRef = ref<HTMLElement | null>(null)
+const chapterColumnRef = ref<HTMLElement | null>(null)
+const chapterNavRef = ref<HTMLElement | null>(null)
+const columnShift = ref(0)
 // Where the reader was before jumping to the discussion, so the toolbar can offer a way back.
 const discussionReturn = ref<number | null>(null)
 let discussionObserver: IntersectionObserver | null = null
@@ -77,11 +81,15 @@ const toolbarMode = computed<'reading' | 'selecting' | 'whiteboard'>(() => {
   return 'reading'
 })
 
-onMounted(() => void openSubject(props.subjectId))
+onMounted(() => {
+  window.addEventListener('resize', syncColumnShift)
+  void openSubject(props.subjectId)
+})
 
 onBeforeUnmount(() => {
   discussionObserver?.disconnect()
   discussionObserver = null
+  window.removeEventListener('resize', syncColumnShift)
 })
 
 watch(() => props.subjectId, (id) => void openSubject(id))
@@ -231,6 +239,56 @@ function captureSelection(selection: { start_offset: number; end_offset: number;
 function openAnnotations() {
   sidebarOpen.value = true
 }
+
+function appliedColumnShift(column: HTMLElement): number {
+  const transform = window.getComputedStyle(column).transform
+  if (!transform || transform === 'none' || typeof DOMMatrixReadOnly === 'undefined') return 0
+  try {
+    return -new DOMMatrixReadOnly(transform).m41
+  } catch {
+    return 0
+  }
+}
+
+// The panel floats, so it can cover the right edge of the text. Slide the column out from under
+// it — but only as far as the chapter navigation allows, or the text lands on top of the chapter
+// list instead. Never while the whiteboard is up: a transform on an ancestor invalidates the DOM
+// offsets Excalidraw caches, and ink would stop landing under the pointer.
+function measureColumnShift() {
+  const column = chapterColumnRef.value
+  const navigation = chapterNavRef.value
+  // Scoped to this view rather than the document: the panel is a sibling in the same layout.
+  const panel = column?.closest('.notes-grid')?.querySelector('.annotation-sidebar')
+  if (!column || !navigation || !panel) {
+    columnShift.value = 0
+    return
+  }
+  // getBoundingClientRect reports the transformed box. Undo whatever translate is actually in
+  // effect rather than the value we last stored: below the drawer breakpoint the stylesheet
+  // suppresses the transform entirely, and mid-transition only part of it has been applied.
+  const rect = column.getBoundingClientRect()
+  const applied = appliedColumnShift(column)
+  columnShift.value = chapterColumnShift(
+    { left: rect.left + applied, right: rect.right + applied },
+    navigation.getBoundingClientRect().right,
+    panel.getBoundingClientRect().left,
+  )
+}
+
+async function syncColumnShift() {
+  if (!sidebarOpen.value || whiteboardVisible.value) {
+    columnShift.value = 0
+    return
+  }
+  await nextTick()
+  measureColumnShift()
+  // The panel animates its width open, so that first measurement caught it mid-flight and read
+  // an edge that is still travelling. Measure again once it has settled.
+  const panel = chapterColumnRef.value?.closest('.notes-grid')?.querySelector('.annotation-sidebar')
+  panel?.addEventListener('transitionend', measureColumnShift, { once: true })
+}
+
+watch([sidebarOpen, whiteboardVisible, activeChapterId], () => void syncColumnShift())
 
 function composeAnnotation() {
   openAnnotations()
@@ -424,7 +482,7 @@ function showError(caught: unknown) {
         </header>
 
         <div class="study-layout">
-          <nav class="chapter-nav" aria-label="章节">
+          <nav ref="chapterNavRef" class="chapter-nav" aria-label="章节">
             <span class="eyebrow">CHAPTERS</span>
             <ChapterTree :nodes="chapterTreeNodes" :active-chapter-id="activeChapterId" @select="activeChapterId = $event" />
           </nav>
@@ -435,7 +493,11 @@ function showError(caught: unknown) {
               <Button v-if="isOwner" label="编辑章节" icon="pi pi-pencil" severity="secondary" text @click="openEditChapter" />
             </div>
             <section class="notes-grid">
-              <div class="chapter-document" :class="{ 'is-shifted': sidebarOpen && !whiteboardVisible }">
+              <div
+                ref="chapterColumnRef"
+                class="chapter-document"
+                :style="{ '--chapter-shift': `${columnShift}px` }"
+              >
                 <ExcalidrawWhiteboard
                   ref="whiteboardRef"
                   :chapter-id="activeChapter.id"

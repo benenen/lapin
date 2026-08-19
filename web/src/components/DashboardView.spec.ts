@@ -128,6 +128,7 @@ let scrollTo = vi.fn()
 let scrollIntoView = vi.fn()
 let observed: Element[] = []
 let boundingTop = 0
+const rects = new Map<string, { left: number; right: number }>()
 const observers: IntersectionObserverCallback[] = []
 
 describe('DashboardView ownership editing', () => {
@@ -145,8 +146,12 @@ describe('DashboardView ownership editing', () => {
     })
     Element.prototype.scrollIntoView = scrollIntoView
     boundingTop = 0
-    Element.prototype.getBoundingClientRect = function () {
-      return { x: 0, y: boundingTop, top: boundingTop, bottom: boundingTop, left: 0, right: 0, width: 0, height: 0, toJSON: () => ({}) }
+    rects.clear()
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const named = Array.from(this.classList).map((name) => rects.get(name)).find(Boolean)
+      const left = named?.left ?? 0
+      const right = named?.right ?? 0
+      return { x: left, y: boundingTop, top: boundingTop, bottom: boundingTop, left, right, width: right - left, height: 0, toJSON: () => ({}) }
     }
     observers.length = 0
     apiMock.listSubjects.mockResolvedValue([{ ...subject, chapters: undefined }])
@@ -476,21 +481,60 @@ describe('DashboardView ownership editing', () => {
     expect(scrollTo).toHaveBeenNthCalledWith(2, { top: 52000, behavior: 'smooth' })
   })
 
-  it('never lets the sidebar resize the chapter column, and does not slide it under the whiteboard', async () => {
+  it('slides the chapter column out from under the panel, but never under the whiteboard', async () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
     const column = wrapper.get('.chapter-document')
-    expect(column.classes()).not.toContain('is-shifted')
+    expect(column.attributes('style')).toContain('--chapter-shift: 0px')
+
+    // column 464..1200, navigation ends at 224, panel starts at 1120 → 96px of overlap to clear.
+    rects.set('chapter-document', { left: 464, right: 1200 })
+    rects.set('chapter-nav', { left: 0, right: 224 })
+    rects.set('annotation-sidebar', { left: 1120, right: 1440 })
 
     await wrapper.get('.chapter-toolbar button[data-action="annotations"]').trigger('click')
-    expect(column.classes()).toContain('is-shifted')
+    await flushPromises()
+    expect(column.attributes('style')).toContain('--chapter-shift: 96px')
 
     await wrapper.get('.chapter-toolbar button[data-action="whiteboard"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('.annotation-sidebar').classes()).not.toContain('is-collapsed')
-    expect(column.classes()).not.toContain('is-shifted')
+    expect(column.attributes('style')).toContain('--chapter-shift: 0px')
+  })
+
+  it('measures the same shift twice instead of drifting on a re-sync', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    rects.set('chapter-document', { left: 464, right: 1200 })
+    rects.set('chapter-nav', { left: 0, right: 224 })
+    rects.set('annotation-sidebar', { left: 1120, right: 1440 })
+
+    await wrapper.get('.chapter-toolbar button[data-action="annotations"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.chapter-document').attributes('style')).toContain('--chapter-shift: 96px')
+
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+
+    expect(wrapper.get('.chapter-document').attributes('style')).toContain('--chapter-shift: 96px')
+  })
+
+  it('will not slide the chapter column over the chapter navigation', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    // 1200px: clearing the panel needs 216px but only 104px is free before the navigation.
+    rects.set('chapter-document', { left: 344, right: 1080 })
+    rects.set('chapter-nav', { left: 0, right: 224 })
+    rects.set('annotation-sidebar', { left: 880, right: 1200 })
+
+    await wrapper.get('.chapter-toolbar button[data-action="annotations"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.chapter-document').attributes('style')).toContain('--chapter-shift: 104px')
   })
 
   it('opens the annotation sidebar from the toolbar', async () => {
