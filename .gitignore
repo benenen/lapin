@@ -29,7 +29,7 @@ go.work.sum
 
 # Local build output
 /bin/
-/web/node_modules/
+node_modules/
 /web/coverage/
 /web/dist/
 /web/public/excalidraw-assets/
