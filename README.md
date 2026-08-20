@@ -142,6 +142,30 @@ PDF 的语义结构并不可靠：转换器会恢复常见段落、标题、列�
 
 中文技术书籍使用 `--profile zh-technical-book`（默认），识别“第 N 章”和“图 N-N”；英文或其他按大字号二级标题分章的书籍可使用 `--profile generic-book`。
 
+#### 两种提取引擎
+
+`--engine layout`（默认）是上面描述的离线确定性引擎：只依赖 Poppler，不联网，逐页做版面分析。它按字号和「第 N 章」切分，适合书籍。
+
+`--engine llm` 把每页渲染成图片，连同该页文字、全文大纲、上一页尾部和下一页开头一起交给多模态模型，按 `internal/documentconv/pdf/llm_prompt.md` 的规则重建 Markdown。它能恢复版面分析拿不到的东西——GFM 表格、带语言标注的代码围栏、稳定的标题层级——并丢弃页眉页脚。代价是每页一次网关往返、结果不可复现，且**不提取图片**（图位以 `*[图: …]*` 占位并计入 warnings）。接口手册这类表格密集、不按字号分章的文档适合它。
+
+```bash
+export LAPIN_LLM_BASE_URL='http://<gateway>/v1'
+export LAPIN_LLM_MODEL='<vision-model>'
+# 需要鉴权的网关再设 LAPIN_LLM_API_KEY；和 Access Token 一样只从环境变量读取
+
+./bin/lapin-cli course prepare-pdf \
+  --pdf '/absolute/path/manual.pdf' \
+  --output /tmp/manual-bundle \
+  --external-id nvr-openapi \
+  --title '录播主机接口手册' \
+  --profile generic-book \
+  --engine llm --llm-dpi 300 --llm-workers 10
+```
+
+`--llm-base-url`、`--llm-model`、`--llm-outline-model` 也可用命令行传入，覆盖同名环境变量。该引擎另外需要 Poppler 的 `pdftotext` 和 `pdftoppm`，单份 PDF 最多 400 页。
+
+结果里的 `warnings` 必须逐条看：它会报告转成空白的页、需要人工补的图位，以及**结尾落在代码围栏内的章节**——某一页的 shell 载荷换行时，模型可能在命令中间关掉围栏，未闭合的围栏会把该章后半段整体渲染成代码。图表转写同样需要复核：柱状图的数值归属会被稳定地认错，改 prompt 无法消除。
+
 重新转换已经导入过的 PDF 时，应传入上一次审核过的 manifest：`--reuse-chapter-tree /path/to/previous/course.json`。CLI 会按章节标题复用既有 external ID 和分组树，并把新识别章节追加为新节点，避免因重新生成 ID 造成重复章节。标题发生变化时先人工更新基准 manifest 的映射。
 
 CLI 会拒绝未知字段、非 UTF-8 文档、目录穿越、逃逸到 manifest 目录外的软链接、超出服务端限制的内容，以及对非本机地址使用明文 HTTP。它不会自动重试 POST 或跟随重定向。远程网络较慢且需要代理时，可使用标准 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY` 环境变量；不要把 Access Token 写入代理配置或日志。
