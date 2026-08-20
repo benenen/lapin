@@ -121,7 +121,7 @@ func countImportedChapters(chapters []importChapterRequest) int {
 func writeUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage:")
 	fmt.Fprintln(writer, "  lapin-cli course import --manifest <course.json> [--base-url <origin>]")
-	fmt.Fprintln(writer, "  lapin-cli course prepare-pdf --pdf <book.pdf> --output <bundle> --external-id <id> --title <title> [--profile <name>] [--reuse-chapter-tree <manifest>]")
+	fmt.Fprintln(writer, "  lapin-cli course prepare-pdf --pdf <book.pdf> --output <bundle> --external-id <id> --title <title> [--profile <name>] [--engine layout|llm] [--reuse-chapter-tree <manifest>]")
 }
 
 func writeImportUsage(writer io.Writer) {

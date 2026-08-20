@@ -5,17 +5,20 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/benenen/lapin/internal/documentconv"
 	"github.com/benenen/lapin/internal/documentconv/pdf"
 )
 
 type preparePDFResult struct {
-	Manifest string `json:"manifest"`
-	Chapters int    `json:"chapters"`
-	Assets   int    `json:"assets"`
+	Manifest string   `json:"manifest"`
+	Chapters int      `json:"chapters"`
+	Assets   int      `json:"assets"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 func runPreparePDFCommand(ctx context.Context, args []string, dependencies Dependencies) int {
@@ -26,6 +29,12 @@ func runPreparePDFCommand(ctx context.Context, args []string, dependencies Depen
 	externalID := flags.String("external-id", "", "stable course external ID")
 	title := flags.String("title", "", "course title")
 	profileName := flags.String("profile", "zh-technical-book", "PDF layout profile: zh-technical-book or generic-book")
+	engineName := flags.String("engine", "layout", "extraction engine: layout (offline, deterministic) or llm (vision model, needs a gateway)")
+	llmBaseURL := flags.String("llm-base-url", "", "OpenAI-compatible chat completions base URL (or use LAPIN_LLM_BASE_URL)")
+	llmModel := flags.String("llm-model", "", "vision model used for page conversion (or use LAPIN_LLM_MODEL)")
+	llmOutlineModel := flags.String("llm-outline-model", "", "model used for the outline pass (or use LAPIN_LLM_OUTLINE_MODEL, defaults to --llm-model)")
+	llmDPI := flags.Int("llm-dpi", 0, "page render DPI for the llm engine")
+	llmWorkers := flags.Int("llm-workers", 0, "concurrent page conversions for the llm engine")
 	reuseChapterTree := flags.String("reuse-chapter-tree", "", "existing manifest whose stable chapter external IDs and grouping should be reused")
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -42,7 +51,20 @@ func runPreparePDFCommand(ctx context.Context, args []string, dependencies Depen
 		fmt.Fprintf(dependencies.Stderr, "usage error: %s\n", err)
 		return exitUsage
 	}
-	result, err := preparePDF(ctx, *pdfPath, *outputPath, strings.TrimSpace(*externalID), strings.TrimSpace(*title), profile, strings.TrimSpace(*reuseChapterTree))
+	converter, err := selectPDFConverter(strings.TrimSpace(*engineName), profile, llmSettings{
+		baseURL:      settingOrEnv(dependencies, *llmBaseURL, "LAPIN_LLM_BASE_URL"),
+		model:        settingOrEnv(dependencies, *llmModel, "LAPIN_LLM_MODEL"),
+		outlineModel: settingOrEnv(dependencies, *llmOutlineModel, "LAPIN_LLM_OUTLINE_MODEL"),
+		apiKey:       environmentValue(dependencies, "LAPIN_LLM_API_KEY"),
+		imageDPI:     *llmDPI,
+		workers:      *llmWorkers,
+		httpClient:   dependencies.HTTPClient,
+	})
+	if err != nil {
+		fmt.Fprintf(dependencies.Stderr, "usage error: %s\n", err)
+		return exitUsage
+	}
+	result, err := preparePDF(ctx, converter, *pdfPath, *outputPath, strings.TrimSpace(*externalID), strings.TrimSpace(*title), strings.TrimSpace(*reuseChapterTree))
 	if err != nil {
 		fmt.Fprintf(dependencies.Stderr, "PDF preparation error: %s\n", sanitizeDiagnostic(err.Error(), ""))
 		return exitUsage
@@ -56,6 +78,67 @@ func runPreparePDFCommand(ctx context.Context, args []string, dependencies Depen
 	return exitSuccess
 }
 
+// llmSettings carries the gateway configuration for the llm engine. The API key is
+// read from the environment only, matching how the CLI handles the Access Token.
+type llmSettings struct {
+	baseURL      string
+	model        string
+	outlineModel string
+	apiKey       string
+	imageDPI     int
+	workers      int
+	httpClient   *http.Client
+}
+
+func settingOrEnv(dependencies Dependencies, flagValue, name string) string {
+	if trimmed := strings.TrimSpace(flagValue); trimmed != "" {
+		return trimmed
+	}
+	return environmentValue(dependencies, name)
+}
+
+func environmentValue(dependencies Dependencies, name string) string {
+	if dependencies.LookupEnv == nil {
+		return ""
+	}
+	value, exists := dependencies.LookupEnv(name)
+	if !exists {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+// selectPDFConverter picks the extraction engine. The layout engine is the default
+// because it is deterministic and needs no network; the llm engine restores tables,
+// code fences and heading levels that layout heuristics cannot recover, at the cost
+// of a gateway round trip per page.
+func selectPDFConverter(engine string, profile pdf.Profile, settings llmSettings) (documentconv.Converter, error) {
+	switch engine {
+	case "", "layout":
+		return pdf.New(pdf.Options{Profile: profile}), nil
+	case "llm":
+		if settings.baseURL == "" {
+			return nil, fmt.Errorf("--engine llm requires --llm-base-url or LAPIN_LLM_BASE_URL")
+		}
+		if settings.model == "" {
+			return nil, fmt.Errorf("--engine llm requires --llm-model or LAPIN_LLM_MODEL")
+		}
+		return pdf.NewLLMConverter(pdf.LLMOptions{
+			Profile:      profile,
+			BaseURL:      settings.baseURL,
+			APIKey:       settings.apiKey,
+			Model:        settings.model,
+			OutlineModel: settings.outlineModel,
+			Caller:       "lapin_cli_prepare_pdf",
+			ImageDPI:     settings.imageDPI,
+			MaxWorkers:   settings.workers,
+			HTTPClient:   settings.httpClient,
+		})
+	default:
+		return nil, fmt.Errorf("--engine must be layout or llm")
+	}
+}
+
 func selectPDFProfile(name string) (pdf.Profile, error) {
 	switch name {
 	case "generic-book":
@@ -67,7 +150,7 @@ func selectPDFProfile(name string) (pdf.Profile, error) {
 	}
 }
 
-func preparePDF(ctx context.Context, pdfPath, outputPath, externalID, title string, profile pdf.Profile, reuseChapterTree string) (preparePDFResult, error) {
+func preparePDF(ctx context.Context, converter documentconv.Converter, pdfPath, outputPath, externalID, title, reuseChapterTree string) (preparePDFResult, error) {
 	outputAbsolute, err := filepath.Abs(outputPath)
 	if err != nil {
 		return preparePDFResult{}, fmt.Errorf("resolve output directory: %w", err)
@@ -80,7 +163,6 @@ func preparePDF(ctx context.Context, pdfPath, outputPath, externalID, title stri
 	if err := os.MkdirAll(outputAbsolute, 0o750); err != nil {
 		return preparePDFResult{}, fmt.Errorf("create output directory: %w", err)
 	}
-	converter := pdf.New(pdf.Options{Profile: profile})
 	document, err := converter.Convert(ctx, pdfPath)
 	if err != nil {
 		return preparePDFResult{}, err
@@ -132,7 +214,12 @@ func preparePDF(ctx context.Context, pdfPath, outputPath, externalID, title stri
 	if _, err := loadBundle(manifestPath); err != nil {
 		return preparePDFResult{}, fmt.Errorf("validate generated PDF bundle: %w", err)
 	}
-	return preparePDFResult{Manifest: manifestPath, Chapters: countManifestChapters(manifestChapters), Assets: len(document.Assets)}, nil
+	return preparePDFResult{
+		Manifest: manifestPath,
+		Chapters: countManifestChapters(manifestChapters),
+		Assets:   len(document.Assets),
+		Warnings: document.Warnings,
+	}, nil
 }
 
 func countManifestChapters(chapters []chapterManifest) int {
