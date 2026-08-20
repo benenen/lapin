@@ -19,6 +19,9 @@ import 'package:lapin_app/core/network/api_client.dart';
 const String email = String.fromEnvironment('E2E_EMAIL', defaultValue: 'admin@localhost');
 const String password = String.fromEnvironment('E2E_PASSWORD', defaultValue: 'admin12345678');
 
+/// Keeps the app on screen at the end of the run so a screenshot can be taken.
+const int holdSeconds = int.fromEnvironment('E2E_HOLD_SECONDS');
+
 Future<void> settle(WidgetTester tester, {int seconds = 20}) async {
   // pumpAndSettle would time out against a live server, so poll instead.
   final DateTime deadline = DateTime.now().add(Duration(seconds: seconds));
@@ -90,5 +93,20 @@ void main() {
     final int bodyCharacters = spanCharacters + selectableCharacters;
     expect(bodyCharacters, greaterThan(200), reason: '章节正文应当渲染出可观的文字量');
     debugPrint('E2E_OK 渲染字符数=$bodyCharacters');
+
+    // 4. 标注入口：本章有标注就列出来，没有就给出引导，两种都算通过。
+    await tester.tap(find.byIcon(Icons.comment_outlined));
+    await settle(tester, seconds: 2);
+    final bool listed = find.byType(ListTile).evaluate().isNotEmpty;
+    final bool empty = find.textContaining('还没有标注').evaluate().isNotEmpty;
+    expect(listed || empty, isTrue, reason: '标注面板应当打开');
+    debugPrint('E2E_OK 标注面板 已有标注=$listed');
+    if (listed) {
+      await tester.tap(find.byType(ListTile).first);
+      await settle(tester, seconds: 2);
+      expect(find.textContaining('·'), findsWidgets, reason: '详情应显示作者与时间');
+    }
+    // 留出窗口给外部截图核对高亮渲染。
+    await settle(tester, seconds: holdSeconds);
   });
 }
