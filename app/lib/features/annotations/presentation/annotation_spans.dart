@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -7,22 +8,27 @@ import '../domain/quote_anchor.dart';
 
 /// Renders annotation highlights as real [TextSpan]s inside the chapter text.
 ///
-/// The quote is wrapped as `a > ann-<color>`: the `a` makes MarkdownBuilder
-/// attach a tap recognizer, and the inner tag carries the highlight color from
-/// the style sheet. Both stay text spans, so a highlight that runs past the end
-/// of a line still wraps. A MarkdownElementBuilder cannot do this — it returns a
-/// Widget, which becomes an atomic WidgetSpan that refuses to break.
-///
 /// Markers are inserted into the source rather than matching the quote text
 /// directly, because inline syntaxes run per block: a match reports its offset
 /// within the block, not within the chapter, so there is no way to compare it
 /// against the stored offset from inside onMatch. Placing the marker at the one
 /// offset we resolved up front makes disambiguation exact.
+///
+/// The highlight itself comes from a [MarkdownElementBuilder] returning a
+/// [RichText]. That is not the atomic-WidgetSpan trap it looks like: the
+/// builder unwraps text-ish widgets (`_getInlineSpanFromText`) and merges their
+/// spans with the surrounding text into one RichText, so a highlight that runs
+/// past the end of a line still wraps. Styling through a custom
+/// `styleSheet.styles` key does NOT work — MarkdownWidget merges the supplied
+/// sheet into its fallback, and `merge` rebuilds the tag map from named fields
+/// only, dropping custom keys.
 const String _markerOpen = '\u{E000}';
 const String _markerMid = '\u{E001}';
 const String _markerClose = '\u{E002}';
 
-const String annotationLinkScheme = 'lapin-annotation';
+/// Tag carrying a highlighted quote. Its attributes hold the annotation id and
+/// color; the builder registered under this tag does the drawing.
+const String annotationTag = 'lapin-ann';
 
 /// Chapter Markdown with annotation markers inserted, plus the annotations that
 /// actually got anchored — index-aligned with the markers.
@@ -109,7 +115,7 @@ List<({int start, int end})> _fencedCodeRanges(String source) {
   return ranges;
 }
 
-/// Turns the markers back into `a > ann-<color>` elements.
+/// Turns the markers back into [annotationTag] elements.
 class AnnotationSyntax extends md.InlineSyntax {
   AnnotationSyntax(this.anchored)
       : super('$_markerOpen(\\d+)$_markerMid([\\s\\S]*?)$_markerClose',
@@ -126,23 +132,12 @@ class AnnotationSyntax extends md.InlineSyntax {
       return true;
     }
     final Annotation annotation = anchored[index];
-    final md.Element link = md.Element('a', <md.Node>[
-      md.Element.text('ann-${annotation.color}', quoted),
-    ]);
-    link.attributes['href'] = '$annotationLinkScheme:${annotation.id}';
-    parser.addNode(link);
+    final md.Element element = md.Element.text(annotationTag, quoted);
+    element.attributes['id'] = annotation.id;
+    element.attributes['color'] = annotation.color;
+    parser.addNode(element);
     return true;
   }
-}
-
-/// The annotation id in a tapped link, or null for an ordinary link.
-String? annotationIdFromHref(String? href) {
-  const String prefix = '$annotationLinkScheme:';
-  if (href == null || !href.startsWith(prefix)) {
-    return null;
-  }
-  final String id = href.substring(prefix.length);
-  return id.isEmpty ? null : id;
 }
 
 const Map<String, Color> _highlightColors = <String, Color>{
@@ -152,19 +147,54 @@ const Map<String, Color> _highlightColors = <String, Color>{
   'pink': Color(0xFFF48FB1),
 };
 
-/// Registers a style per annotation color.
+/// Background for [color], readable in either theme.
+Color annotationHighlightColor(String color, Brightness brightness) {
+  final Color base = _highlightColors[color] ?? _highlightColors['yellow']!;
+  return brightness == Brightness.dark ? base.withValues(alpha: 0.32) : base;
+}
+
+/// Draws highlighted quotes and makes them tappable.
 ///
-/// MarkdownStyleSheet keeps its tag styles in a growable map and hands out that
-/// same map, so custom tags can be added to it. Each style sets an explicit
-/// foreground color to override the link color inherited from the wrapping `a`.
-MarkdownStyleSheet withAnnotationStyles(MarkdownStyleSheet sheet, Brightness brightness) {
-  final bool dark = brightness == Brightness.dark;
-  for (final MapEntry<String, Color> entry in _highlightColors.entries) {
-    sheet.styles['ann-${entry.key}'] = (sheet.p ?? const TextStyle()).copyWith(
-      backgroundColor: dark ? entry.value.withValues(alpha: 0.32) : entry.value,
-      color: dark ? Colors.white : Colors.black87,
-      decoration: TextDecoration.none,
+/// Owns its gesture recognizers, so whoever builds it must [dispose] it.
+class AnnotationHighlightBuilder extends MarkdownElementBuilder {
+  AnnotationHighlightBuilder({required this.onTap});
+
+  final ValueChanged<String> onTap;
+  final Map<String, TapGestureRecognizer> _recognizers = <String, TapGestureRecognizer>{};
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final String text = element.textContent;
+    final String id = element.attributes['id'] ?? '';
+    final String color = element.attributes['color'] ?? 'yellow';
+    final Brightness brightness = Theme.of(context).brightness;
+
+    final TapGestureRecognizer recognizer = _recognizers.putIfAbsent(
+      id,
+      () => TapGestureRecognizer()..onTap = () => onTap(id),
+    );
+
+    return RichText(
+      text: TextSpan(
+        text: text,
+        style: (parentStyle ?? DefaultTextStyle.of(context).style).copyWith(
+          backgroundColor: annotationHighlightColor(color, brightness),
+          color: brightness == Brightness.dark ? Colors.white : Colors.black87,
+        ),
+        recognizer: recognizer,
+      ),
     );
   }
-  return sheet;
+
+  void dispose() {
+    for (final TapGestureRecognizer recognizer in _recognizers.values) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+  }
 }

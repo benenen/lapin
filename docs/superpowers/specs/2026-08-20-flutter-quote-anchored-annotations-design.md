@@ -40,29 +40,25 @@ Web 端存的是渲染文本上的偏移（`web/src/components/RichTextContent.v
 
 ### `presentation/annotation_spans.dart` — 正文内高亮
 
-注册一个 `md.InlineSyntax`，直接匹配标注的引用文字（不改写 Markdown 源），生成嵌套元素：
+分两步：先在 Markdown 源里插入私有区哨兵字符（`U+E000`…`U+E002`）圈出引用，再由 `md.InlineSyntax` 把哨兵还原成 `lapin-ann` 元素，元素属性带 id 与颜色。
 
-```
-a(href: "lapin-annotation:<id>") > ann(引用文字)
-```
+**为什么要改写源。** inline 语法是按块解析的：`onMatch` 拿到的 `match.start` 是块内偏移，不是全章偏移，因此在 `onMatch` 里无法与存储的 offset 比较。把哨兵预先放在我们已解析出的那一个位置上，消歧就变成确定的，而不是靠猜。
 
-- 外层 `a` 让 `MarkdownBuilder` 建立 link handler，从而给文本 span 挂上 `TapGestureRecognizer`；点击经 `onTapLink` 打开详情。
-- 内层 `ann` 从 `styleSheet.styles['ann']` 取高亮底色。`_styles` 是可增长的 map 字面量、`styles` getter 返回其本身，因此可以注入自定义标签的样式。合并顺序让 `ann` 覆盖链接色。
+落在 ``` 围栏代码块里的引用会被跳过（否则哨兵会被当正文显示），互相重叠的标注只保留先出现的那个。
 
-两层都是真正的 `TextSpan`，折行、选中、字距均正常。
+**高亮由 `MarkdownElementBuilder` 产出 `RichText`。** 这与「builder 只能返回 Widget、会变成原子 WidgetSpan」的直觉相反：`MarkdownBuilder._getInlineSpanFromText` 会把 `Text`/`RichText`/`SelectableText` 拆回 span，再与相邻文本合并成同一个 `RichText`，所以长引用照常折行。builder 同时给 span 挂上自己的 `TapGestureRecognizer`（由页面负责 dispose），点击即开详情。
 
-**不能用 `MarkdownElementBuilder`**：它只能返回 `Widget`，会被包成原子的 `WidgetSpan`，一句话长的引用无法折行。
-
-同一引用多处出现时，`InlineSyntax` 用匹配位置与存储 offset 的距离决定是否接受本次命中，只高亮意图中的那一处。
+**不能走 `styleSheet.styles` 自定义键。** `MarkdownWidget` 在 build 时执行 `fallbackStyleSheet.merge(widget.styleSheet)`，而 `merge` 经 `copyWith` 用具名字段重建标签表，自定义键在这一步被丢弃——实机验证时高亮渲染成了链接色，就是这个原因。
 
 ### `data/annotation_repository.dart`
 
 `list(chapterId)` 与 `create(...)`。provider 显式依赖 `sessionProvider` —— 与课程列表同因：`go_router` 先构建初始路由再重定向，未登录时的 401 会被 Riverpod 缓存住。
 
-### `presentation/` 其余
+### `presentation/annotation_sheets.dart`
 
-- `annotation_detail_sheet.dart` — 引用、笔记、作者、时间。
-- `create_annotation_sheet.dart` — 笔记输入 + 颜色选择，字数上限与服务端一致。
+- 详情：引用、笔记、作者、时间。只读——服务端没有编辑或删除标注的路由。
+- 列表：整章标注，点进去看详情。
+- 新建：笔记输入 + 颜色选择，字数上限与服务端一致，笔记为空时保存按钮不可用。
 
 ### 创建流程
 
@@ -78,8 +74,8 @@ a(href: "lapin-annotation:<id>") > ann(引用文字)
 ## 测试
 
 - `quote_anchor` 单测：多处出现取最近、CJK 的 UTF-16 计数、跨软换行的容错匹配、匹配不到返回 null、quote 为空。
-- widget 测试：假 repository 下高亮渲染出来，点击打开详情。
-- e2e 扩一条：新建标注后正文出现标记。
+- widget 测试：假后端下章节与标注一起加载、列表与详情能打开、标注拉取失败时正文照常可读。
+- e2e 扩一步：打开标注面板并进入详情。正文高亮的视觉效果用模拟器截图核对——点击命中 span 的位置很难在 widget 测试里可靠模拟。
 
 ## 不做
 

@@ -87,6 +87,28 @@ class _ChapterScaffoldState extends ConsumerState<_ChapterScaffold> {
   String? _selectedText;
   String? _selectedBlock;
 
+  late final AnnotationHighlightBuilder _highlights =
+      AnnotationHighlightBuilder(onTap: _openAnnotationById);
+
+  @override
+  void dispose() {
+    _highlights.dispose();
+    super.dispose();
+  }
+
+  void _openAnnotationById(String id) {
+    final Annotation? tapped = ref
+        .read(chapterAnnotationsProvider(_currentChapterId))
+        .valueOrNull
+        ?.where((Annotation item) => item.id == id)
+        .firstOrNull;
+    if (tapped != null) {
+      _showAnnotationDetail(tapped);
+    }
+  }
+
+  String _currentChapterId = '';
+
   @override
   Widget build(BuildContext context) {
     final List<FlatChapter> chapters =
@@ -110,6 +132,7 @@ class _ChapterScaffoldState extends ConsumerState<_ChapterScaffold> {
 
     // A failed annotation load must not stop the reading: fall back to no
     // highlights rather than an error page.
+    _currentChapterId = current.chapter.id;
     final List<Annotation> annotations =
         ref.watch(chapterAnnotationsProvider(current.chapter.id)).valueOrNull ?? <Annotation>[];
     final AnnotatedMarkdown prepared = annotateMarkdown(current.chapter.content, annotations);
@@ -145,24 +168,11 @@ class _ChapterScaffoldState extends ConsumerState<_ChapterScaffold> {
               data: prepared.markdown,
               selectable: true,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
-              styleSheet: withAnnotationStyles(
-                MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                  p: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.8),
-                ),
-                Theme.of(context).brightness,
+              styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                p: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.8),
               ),
               inlineSyntaxes: <md.InlineSyntax>[AnnotationSyntax(prepared.anchored)],
-              onTapLink: (String text, String? href, String title) {
-                final String? id = annotationIdFromHref(href);
-                if (id == null) {
-                  return; // An ordinary link in the chapter; nothing to open yet.
-                }
-                final Annotation? tapped =
-                    annotations.where((Annotation item) => item.id == id).firstOrNull;
-                if (tapped != null) {
-                  _showAnnotationDetail(tapped);
-                }
-              },
+              builders: <String, MarkdownElementBuilder>{annotationTag: _highlights},
               onSelectionChanged: (String? text, TextSelection selection, SelectionChangedCause? cause) {
                 final String? picked = (text != null && selection.isValid && !selection.isCollapsed)
                     ? selection.textInside(text)

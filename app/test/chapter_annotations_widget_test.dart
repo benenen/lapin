@@ -9,7 +9,7 @@ import 'package:lapin_app/features/chapter/presentation/chapter_page.dart';
 const String chapterBody = '这一段讲工具的用法，后面还会再提到。';
 
 /// Serves just enough of the API for the chapter page to render.
-class _Backend implements HttpClientAdapter {
+class FakeBackend implements HttpClientAdapter {
   int annotationPosts = 0;
   Map<String, dynamic>? lastPostedBody;
 
@@ -47,8 +47,8 @@ class _Backend implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-Future<_Backend> pumpChapter(WidgetTester tester) async {
-  final _Backend backend = _Backend();
+Future<FakeBackend> pumpChapter(WidgetTester tester) async {
+  final FakeBackend backend = FakeBackend();
   final CookieJar jar = CookieJar();
   final ApiClient client = ApiClient(
     dio: ApiClient.buildDio(baseUrl: 'http://example.test', jar: jar)..httpClientAdapter = backend,
@@ -104,8 +104,8 @@ void main() {
   });
 }
 
-/// Same as [_Backend] but the annotation list always fails.
-class _FailingAnnotations extends _Backend {
+/// Same as [FakeBackend] but the annotation list always fails.
+class _FailingAnnotations extends FakeBackend {
   @override
   Future<ResponseBody> fetch(
       RequestOptions options, Stream<dynamic>? stream, Future<void>? cancelFuture) async {

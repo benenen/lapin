@@ -4,7 +4,7 @@ Android / iOS 双平台客户端，对接 Lapin 现有的 Go API。设计依据�
 [`docs/flutter-app-plan.md`](../docs/flutter-app-plan.md)，本文只记录跑起来需要知道的事。
 
 当前范围是最小可用闭环：**登录 → 课程列表 → 章节正文（Markdown 渲染）**。
-标注与白板尚未实现，见文末 TODO。
+白板尚未实现，见文末 TODO。标注已按 `quote` 锚定实现，见 `lib/features/annotations/` 与 `docs/superpowers/specs/2026-08-20-flutter-quote-anchored-annotations-design.md`。
 
 ## 跑起来
 
@@ -97,9 +97,6 @@ Associated Domains）在那份文档里已经写好，届时照做即可。
 
 ## TODO
 
-- **标注**：渲染标注标记、支持新建。锚定必须用服务端存的 `quote` 文本，不能用字符
-  偏移 —— Web 端与 Flutter 端对同一份 Markdown 扁平化后长度不同（第 1 章 27,586 vs
-  27,612），且两边都没有能对齐的解析器开关。见 `docs/flutter-app-plan.md` §6.4。
 - **白板**：透明手写层。Flutter 侧比 Web 简单（无画布尺寸上限），但必须产出服务端
   `validWhiteboardData` 认可的 Excalidraw 文档格式，约束见 §6.5。
 - **讨论**：章节评论的读写。

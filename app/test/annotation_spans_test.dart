@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lapin_app/features/annotations/domain/annotation.dart';
 import 'package:lapin_app/features/annotations/presentation/annotation_spans.dart';
@@ -75,25 +74,24 @@ void main() {
           annotateMarkdown(source, <Annotation>[makeAnnotation(quote: '工具', startOffset: second)]);
 
       final List<md.Node> nodes = parse(prepared);
-      final md.Element? link = findElement(nodes, 'a');
-      expect(link, isNotNull);
+      expect(findElement(nodes, annotationTag), isNotNull);
       // 标记之前的文字里应当还留着第一处「工具」
       final int markerAt = prepared.markdown.indexOf('\u{E000}');
       expect(prepared.markdown.substring(0, markerAt), contains('工具'));
       expect(plainText(nodes), source);
     });
 
-    test('生成 a > ann-<颜色> 结构，href 带得上标注 id', () {
+    test('生成带 id 与颜色的标注元素', () {
       final AnnotatedMarkdown prepared = annotateMarkdown(
         '这一段讲工具的用法。',
         <Annotation>[makeAnnotation(id: 'xyz789', quote: '工具', startOffset: 4, color: 'green')],
       );
-      final md.Element? link = findElement(parse(prepared), 'a');
+      final md.Element? mark = findElement(parse(prepared), annotationTag);
 
-      expect(link!.attributes['href'], 'lapin-annotation:xyz789');
-      final md.Element inner = link.children!.single as md.Element;
-      expect(inner.tag, 'ann-green');
-      expect(plainText(<md.Node>[inner]), '工具');
+      expect(mark, isNotNull);
+      expect(mark!.attributes['id'], 'xyz789');
+      expect(mark.attributes['color'], 'green');
+      expect(mark.textContent, '工具');
     });
 
     test('引用已经不在正文里的标注被跳过，不影响其它标注', () {
@@ -140,8 +138,7 @@ void main() {
         source,
         <Annotation>[makeAnnotation(quote: '**加粗的工具**', startOffset: source.indexOf('**'))],
       );
-      final md.Element? link = findElement(parse(prepared), 'a');
-      expect(link, isNotNull, reason: '仍应生成标注链接');
+      expect(findElement(parse(prepared), annotationTag), isNotNull, reason: '仍应生成标注元素');
       expect(plainText(parse(prepared)), contains('加粗的工具'));
     });
 
@@ -157,44 +154,22 @@ void main() {
     });
   });
 
-  group('annotationIdFromHref', () {
-    test('认得自家链接，放过普通链接', () {
-      expect(annotationIdFromHref('lapin-annotation:abc'), 'abc');
-      expect(annotationIdFromHref('https://example.com'), isNull);
-      expect(annotationIdFromHref('lapin-annotation:'), isNull);
-      expect(annotationIdFromHref(null), isNull);
-    });
-  });
-
-  group('withAnnotationStyles', () {
-    // Built through a real MaterialApp, the same way the chapter page does it.
-    Future<Map<String, TextStyle?>> stylesFor(WidgetTester tester, Brightness brightness) async {
-      late Map<String, TextStyle?> styles;
-      await tester.pumpWidget(MaterialApp(
-        theme: ThemeData(brightness: brightness),
-        home: Builder(builder: (BuildContext context) {
-          final ThemeData theme = Theme.of(context);
-          styles = withAnnotationStyles(MarkdownStyleSheet.fromTheme(theme), brightness).styles;
-          return const SizedBox.shrink();
-        }),
-      ));
-      return styles;
-    }
-
-    testWidgets('给每种颜色都注册了样式，且覆盖链接色', (WidgetTester tester) async {
-      final Map<String, TextStyle?> styles = await stylesFor(tester, Brightness.light);
+  group('annotationHighlightColor', () {
+    test('每种颜色都有底色，未知颜色退回黄色', () {
       for (final String color in annotationColors) {
-        final TextStyle? style = styles['ann-$color'];
-        expect(style, isNotNull, reason: '$color 应当有高亮样式');
-        expect(style!.backgroundColor, isNotNull);
-        expect(style.decoration, TextDecoration.none, reason: '不能显示成下划线链接');
+        expect(annotationHighlightColor(color, Brightness.light), isNotNull);
       }
+      expect(
+        annotationHighlightColor('不存在的颜色', Brightness.light),
+        annotationHighlightColor('yellow', Brightness.light),
+      );
     });
 
-    testWidgets('深色模式下用半透明底色', (WidgetTester tester) async {
-      final Color light = (await stylesFor(tester, Brightness.light))['ann-yellow']!.backgroundColor!;
-      final Color dark = (await stylesFor(tester, Brightness.dark))['ann-yellow']!.backgroundColor!;
-      expect(dark.a, lessThan(light.a));
+    test('深色模式下用半透明底色', () {
+      expect(
+        annotationHighlightColor('yellow', Brightness.dark).a,
+        lessThan(annotationHighlightColor('yellow', Brightness.light).a),
+      );
     });
   });
 }
